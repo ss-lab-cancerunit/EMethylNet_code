@@ -1,7 +1,10 @@
 # Workflow for preprocessing the data:
 --------------------------------------
 
-- run downloading_files.R
+- run downloading_files.R 
+
+This takes a long time! If there is an error and it stops, just re-run it without deleting any downloaded files and it will  pick up where it left off. This will create a .Rda file for each cancer type.
+
 - Run DataPreprocessingRda.R (or .Rmd for a readable, single cancer type version)
 - Run clean\_data\_preprocessing.ipynb - saves into dataset/pandas folder
 - For multiclass data - Run merging\_cancer\_types.R
@@ -13,3 +16,5 @@
 
 
 
+# R Packages needed:
+TCGAbiolinks, tidyverse, dplyr, SummarizedExperiment, GenomicRanges, impute, lumi

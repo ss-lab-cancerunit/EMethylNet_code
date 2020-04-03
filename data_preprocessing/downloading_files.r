@@ -3,7 +3,6 @@
 # make sure wd is set to 'data_preprocessing'
 
 library(TCGAbiolinks)
-library(stringr)
 
 # choosing TCGA projects
 # for all projects: cancer.types.codes = c('ACC', 'BLCA', 'BRCA', 'CESC', 'CHOL', 'COAD', 'DLBC', 'ESCA', 'GBM', 'HNSC', 'KICH', 'KIRC', 'KIRP', 'LAML', 'LGG', 'LIHC', 'LUAD',

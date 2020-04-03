@@ -135,7 +135,7 @@ m_values <- beta2m(imputed_betas)
 
 Writing to file (both beta and m values):
 ```{r}
-save.path <- 'GDCdata/from_rda/TCGA-'
+
 print(paste('PROJECT: ', cancer.type.code, ', WRITING M VALUES MATRIX ', sep = ''))
 
 # set column and row names as it is for the result of the txt file processing (so it can be run by clean_data_preprocessing)
@@ -144,7 +144,7 @@ print(paste('PROJECT: ', cancer.type.code, ', WRITING M VALUES MATRIX ', sep = '
 # m_values <- cbind(probe=rownames(m_values), m_values) # adding probe name as a column
 # rownames(m_values) <- 1:nrow(m_values)
 
-write.csv(m_values, file=paste(save.path, cancer.type.code, '_m_from_rda', sep=''), sep='\t', row.names = TRUE, quote = FALSE)
+write.csv(m_values, file=paste(cancer.type.code, '_m_from_rda', sep=''), sep='\t', row.names = TRUE, quote = FALSE)
 
 # write.csv(imputed_betas, file=paste(save.path, cancer.type.code, '_beta_from_rda', sep=''), sep='\t', row.names = TRUE, quote = FALSE)
 

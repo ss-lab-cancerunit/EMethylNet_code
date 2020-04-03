@@ -61,11 +61,11 @@ process <- function(cancer.type.code) {
   m_values <- beta2m(imputed_betas)
   
   
-  # Writing to file (both beta and m values):
-  save.path <- 'GDCdata/from_rda/TCGA-'
+  # Writing to file:
+  
   print(paste('PROJECT: ', cancer.type.code, ', WRITING M VALUES MATRIX ', sep = ''))
   
-  write.csv(m_values, file=paste(save.path, cancer.type.code, '_m_from_rda', sep=''), sep='\t', row.names = TRUE, quote = FALSE)
+  write.csv(m_values, file=paste(cancer.type.code, '_m_from_rda', sep=''), sep='\t', row.names = TRUE, quote = FALSE)
   
 }
 
