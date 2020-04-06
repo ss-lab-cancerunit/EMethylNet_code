@@ -7,8 +7,8 @@ print(getwd())
 
 library(dplyr)
 
-# cancer.types.codes = c("BRCA", "HNSC", "THCA", "PRAD")
-cancer.types.codes = c('BLCA', 'BRCA', 'COAD', 'ESCA', 'HNSC', 'KIRC', 'KIRP', 'LIHC', 'LUAD', 'LUSC', 'PRAD', 'THCA', 'UCEC')
+cancer.types.codes = c('BLCA', 'BRCA')
+# cancer.types.codes = c('BLCA', 'BRCA', 'COAD', 'ESCA', 'HNSC', 'KIRC', 'KIRP', 'LIHC', 'LUAD', 'LUSC', 'PRAD', 'THCA', 'UCEC')
 cancer.types.nums = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13) # the target numbers - 1 means BLCA, 2 means BRCA, etc, (0 means normal)
 names(cancer.types.nums) = cancer.types.codes
 
@@ -28,13 +28,13 @@ change_to_type_diagnosis <- function(diagnoses, type) {
 for (cancer.type.code in cancer.types.codes) {
   print(paste("Doing ", cancer.type.code))
   if (use_beta == TRUE) {
-    m_values <- read.csv(file=paste('dataset/pandas/beta_values/TCGA-', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='') # rows = probes, cols = samples
+    m_values <- read.csv(file=paste('dataset/pandas/beta_values/', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='') # rows = probes, cols = samples
   }
   else {
-    m_values <- read.csv(file=paste('dataset/pandas/m_values/TCGA-', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='') # rows = probes, cols = samples
+    m_values <- read.csv(file=paste('dataset/pandas/m_values/', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='') # rows = probes, cols = samples
   }
   
-  diagnoses <- read.csv(file=paste('dataset/pandas/diagnoses/TCGA-', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='')
+  diagnoses <- read.csv(file=paste('dataset/pandas/diagnoses/', cancer.type.code, '.csv', sep = ''), header = TRUE, sep ='')
   diagnoses$X0 <- change_to_type_diagnosis(diagnoses$X0, cancer.type.code)
   
   # need to add on to all data

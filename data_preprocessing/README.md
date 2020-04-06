@@ -9,6 +9,8 @@ This takes a long time! If there is an error and it stops, just re-run it withou
 - Run clean\_data\_preprocessing.ipynb - saves into dataset/pandas folder
 - For multiclass data - Run merging\_cancer\_types.R
 
+The result of this is a bunch of csv files in dataset/pandas/ with folders for m_values, beta_values, barcodes (TCGA identifiers for each sample), and diagnoses (0 is normal, >0 is cancer). Multiclass data will be in TCGA-all. 
+
 
 # Explanation of the other files
 
