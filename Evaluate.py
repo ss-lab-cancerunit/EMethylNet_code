@@ -33,24 +33,6 @@ def plot_confusion_matrix(conf_mat, model_type, save_path = None, small_text = F
     else:
         fig.savefig(save_path,  bbox_inches='tight')
     
-
-# given the path of a .txt confusion matrix (just copied from the output of print_evaluation), remakes the confusion matrix so it is readable
-def fix_confusion_matrix(conf_mat_path, save_path):
-    f = open(conf_mat_path, 'r')
-    lines = f.readlines()
-    lines = [lines[i].strip(' [[]\n') for i in range(len(lines))] 
-    lines = [lines[i].split() for i in range(len(lines))] 
-    import pandas as pd
-    conf_mat = pd.DataFrame(lines)
-    import numpy as np
-    
-    plot_confusion_matrix(np.array(conf_mat, dtype = 'int'), 'xgboost', save_path, small_text = True)
-
-# eg:
-# fix_confusion_matrix('xgboost/figs/confusion_matrix_xgboost_', 'xgboost/figs/confusion_matrix_xgboost_.svg')
-# fix_confusion_matrix('simple_methods/figs/confusion_matrix_LR_.txt', 'simple_methods/figs/confusion_matrix_LR_.svg')
-# fix_confusion_matrix('simple_methods/figs/confusion_matrix_SVM_.txt', 'simple_methods/figs/confusion_matrix_SVM_.svg')
-    
     
 # given the test predictions and ground truths, makes a confusion matrix where the boxes contain the sample's indices rather than counts. This enables us to find if models missclassify the same samples or not.
 def make_labelled_conf_mat(diagnoses_test, predictions, num_classes, model_type, save_folder = ''):
@@ -129,13 +111,15 @@ def print_evaluation(fitted, m_values_test, diagnoses_test, model_type, predicti
     except:
         print("Couldn't calculate roc_auc")
 
-    print("Acc, conf mat:")
+    print("Accuracy: ")
     print(accuracy)
+    print("Conf mat:")
     print(conf_mat)
-    print("precision, recall, f1 for each class:")
-    print(precision, recall, f1)
-    print("matthews correlation coeficient")
-    print(mcc)
+    print("Precision: ", precision)
+    print("Recall: ", recall)
+    print("F1: ", f1)
+    print("Matthews Correlation Coeficient: ", mcc)
+    
     if fitted != None or prob_predictions != []:
         print("roc_auc for each class: ", roc_auc)
     plot_confusion_matrix(conf_mat, model_type, small_text = small_text, cancer_type = cancer_type, save_path = save_folder + 'confusion_matrix_'+model_type+'.svg')
@@ -255,8 +239,7 @@ def plot_curve(curve_type, diagnoses, probs, num_classes, model_type, cancer_typ
     fig.savefig(save_folder + curve_type+'_curve_'+model_type+'.svg', bbox_inches = 'tight')
 
     
-# currently built for binary xgboost
-# for binary xgboost:
+# eg. usage for binary xgboost:
 # from Evaluate import load_data_from_indices
 # Xtest, ytest = load_data_from_indices('../xgboost/test_data_indices_XGBoost_'+cancer_type, cancer_type, True)
 # get_pr_auc(cancer_type, '../xgboost/figs/metrics_xgboost_' + cancer_type + '.csv', model_path = '../xgboost/saved_models/xgboost_model_'+cancer_type + '.pkl')
@@ -396,17 +379,8 @@ def load_data_from_indices(indices_path, cancer_code, remove_inf):
     import numpy as np
     indices = np.loadtxt(indices_path)
     from get_train_and_test import read_in_data
-    
-    import sys
-    import os
-    cwd = os.getcwd() # get the current path, and only take up to methylation-patterns-izzy (discarding the end bit)
-    file = 'methylation-patterns-izzy'
-    end = cwd.find(file) + len(file) + 1 # find start of file in path, add on its lenth to go to the end, and add on 1 to get the /
-    path = cwd[0:end]
-    print("path is ", path)
-    sys.path.append(path)
-    
-    root_path = path
+     
+    root_path = '../'
     m_values, diagnoses = read_in_data(cancer_code, False, False, root_path)
     
     m_values = m_values.transpose()
@@ -421,6 +395,7 @@ def load_data_from_indices(indices_path, cancer_code, remove_inf):
     
     return Xtest, ytest
     
+    
 # given the path of a saved model, loads it and runs evaluation metrics on it
 def load_and_eval(model_path, indices_path, save_name, cancer_code='', use_small=False, remove_inf = True, folder_name = 'figs/'):
     # get model
@@ -431,7 +406,7 @@ def load_and_eval(model_path, indices_path, save_name, cancer_code='', use_small
     import numpy as np
     indices = np.loadtxt(indices_path)
     from get_train_and_test import read_in_data
-    root_path = '/Tank/methylation-patterns-code/methylation-patterns-izzy/' # NOTE: need to change if not running locally
+    root_path = '../' # NOTE: you may need to change this. It should be pointing to the folder that contains data_preprocessing.
     m_values, diagnoses = read_in_data(cancer_code, False, False, root_path)
     
     m_values = m_values.transpose()

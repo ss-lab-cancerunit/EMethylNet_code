@@ -40,7 +40,6 @@ def read_in_data(cancer_code, use_small, use_beta=False, root_path='', outlier =
 
 
 # given m values, removes Inf and -Inf which are caused by a beta value of 0
-# TODO: change the data processing code to deal with this instead
 def deal_with_Inf(m_values_mat):
     # I will for now set -Inf to the min value and Inf to the max value
     # I did want to set it to the min and max possible value, but this causes overflow errors
@@ -54,22 +53,6 @@ def deal_with_Inf(m_values_mat):
         else:
             m_values_mat[indices[i][0], indices[i][1]] = min_val
     return m_values_mat
-
-# given m values and their classes, removes samples so that there is an equal number of samples in each class
-# currently only works for 2 classes, with 0, 1 diagnoses
-def balance_classes(m_values, diagnoses):
-    class_nums = [np.sum(diagnoses == 0), np.sum(diagnoses == 1)]
-    lowest_class = np.argmin(class_nums)
-    num_in_lowest = np.sum(diagnoses == lowest_class)
-    highest_class = np.argmax(class_nums)
-    # so we need to randomly sample lowest_class elements from the highest class
-    possible_indices = np.where(diagnoses == highest_class)[0]
-    sampled_indices = np.random.choice(possible_indices, num_in_lowest, replace = False)
-    lowest_indices = np.where(diagnoses == lowest_class)[0]
-    indices_to_take = np.append(sampled_indices, lowest_indices)
-    indices_to_take.sort() # sort them so retaining the order in m_values and diagnoses
-    return diagnoses[indices_to_take], m_values[:, indices_to_take]
-    
 
 def get_train_and_test(cancer_code, use_small, remove_inf = True, use_beta = False, root_path = '', model_path = '', model_type = '', balanced_classes = False, seed = None):
     # read in the data:
@@ -105,6 +88,7 @@ def get_train_and_test(cancer_code, use_small, remove_inf = True, use_beta = Fal
 #     print(m_values[test_indices])
 #     print(m_values_test)
     
+    # saving the indices of the samples used in testing so when re-evaluating the model later, we can know which samples are in the test set
     np.savetxt(fname = model_path + "test_data_indices_"+model_type, X = test_indices, fmt = "%d")
     
     
