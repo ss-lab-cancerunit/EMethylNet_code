@@ -1,0 +1,109 @@
+self-sufficiency in growth signals
+prolifer
+invasi
+metastasis
+angiogenesis
+apoptosis
+cell cycle arrest
+growth arrest
+cell cycle progression
+migration
+cell cycle
+onco
+growth
+EMT
+autophag
+metaboli
+immun
+methyl
+carcino
+hypomethyl
+hypermethyl
+tumour
+tumor
+tumour suppressor
+tumor suppressor
+silenc
+epigenetic
+CpG
+CGI
+hydroxymethylcytosine
+bisulfite
+metasta
+Breast
+Bladder
+Colon
+Esophag
+Head and Neck
+Kidney renal clear cell carcinoma
+Kidney renal papillary cell carcinoma
+Liver hepatocellular
+Lung adenocarcinoma
+Lung squamous cell carcinoma
+Lung cancer
+Prostate
+Thyroid
+Uterine Corpus Endometrial Carcinoma
+breast
+bladder
+colon
+esophag
+head and neck
+kidney renal clear cell carcinoma
+kidney renal papillary cell carcinoma
+liver hepatocellular
+lung adenocarcinoma
+lung squamous cell carcinoma
+lung cancer
+prostate
+thyroid
+uterine corpus endometrial carcinoma
+regul
+induc
+inhib
+activ
+cataly
+acetyl
+phosphoryl
+phospha
+sumoyl
+uniqiuiti
+isgylat
+ribosyl
+hydroxil
+associat
+bind
+interact
+conjugat
+modulat
+stabil
+degrad
+suppress
+repress
+target
+depend
+promot
+express
+co-express
+promoter
+terminat
+mutant
+knock
+gain of function
+dominant negative
+funct
+enhanc
+silenc
+control
+chip
+chromatin
+transcription
+translat
+motif
+isoform
+metabol
+acetylas
+ribosylat
+prolyl
+insulator
+pathway

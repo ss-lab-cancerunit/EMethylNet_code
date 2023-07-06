@@ -1,0 +1,436 @@
+---
+title: "SurvivalAnalysisNoTestset"
+output: html_notebook
+---
+
+Running survival analysis with no testset to generate KM curves, to see if there is at least a difference in gene expression.
+
+Lots of this code is copied from SurvivalAnalysis.Rmd
+
+## Strategy:
+- On all data, find significant genes through univariate cox analysis
+- On all data, fit a coxph model with these significant genes. Do with covars, with genes, and with both
+- Split the hazard into top 50% and bottom 50% (low and high)
+- Plot km curve for these hazards, and log p value.
+
+```{r setup, include=FALSE}
+library(RTCGA.clinical) # survival times
+library(RTCGA.rnaseq) # genes' expression
+library(survminer)
+library(survival)
+library(SummarizedExperiment)
+library(dplyr)
+```
+
+# Read in clinical and survival data
+```{r}
+
+get_expr_data <- function(cancer_type) {
+  # get the relaxed gene list
+  genesPath <- "/Tank/methylation-patterns-code/methylation-patterns-izzy/mapping_to_genes/gene_lists/" 
+  genesList <- read.table(paste0(genesPath, 'genes_', cancer_type, '_1500.csv'), sep=',', header = TRUE)
+  genesList <- data.frame(V1 =unique(genesList$ensembl_gene_id))
+  
+  # get expression data
+  tcgaPath <- "/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/"
+  load(paste0(tcgaPath, cancer_type, 'expression.rda')) #  (loads into 'data' variable)
+  countsMatrix <- assays(data,"raw_counts")$`HTSeq - Counts`
+  # update rownames with symbols
+  rownames(countsMatrix) <- elementMetadata(rowRanges(data))$ensembl_gene_id
+
+  # only keep tumour samples
+  types <- data.frame(colData(data)$barcode)
+  colnames(types) <- "types"
+  typeID <- data.frame(types=as.numeric(substr(do.call(rbind,strsplit(as.character(types$types), split="-"))[,4], 1, 2))) # cancer or normal
+  countsMatrix <- countsMatrix[, typeID <10] # only take cancer
+
+  # now normalise (before we remove a bunch of genes)
+  library(DESeq2)
+  countsMatrix_vst <- varianceStabilizingTransformation(countsMatrix)
+  # countsMatrix_vst[1:5, 1:5]
+  row.names(countsMatrix_vst) <- row.names(countsMatrix)
+  countsMatrix <- countsMatrix_vst
+  
+  # take all genes we are interested in
+  genesList <- data.frame(V1 = genesList$V1[genesList$V1 %in% row.names(countsMatrix)]) # only take ones that are in countsMatrix
+  countsMatrix <- countsMatrix[as.character(genesList$V1), ]
+
+  # change all '-' to '_'
+  library(stringr)
+  genesList$V1 <- str_replace(genesList$V1, '-', '_')
+  row.names(countsMatrix) <- str_replace(row.names(countsMatrix), '-', '_')
+  
+  return(list(countsMatrix, genesList))
+}
+
+get_surv_data <- function(cancer_type) {
+  # get survival data
+  survData <- survivalTCGA(get(paste0(cancer_type, '.clinical')))
+  return(survData)
+}
+
+# now we normalise in get_expr_data function!
+# now using vst as rlog was taking too long
+# normalise_data <- function(countsMatrix) {
+#   # library(edgeR)
+#   # countsMatrix_cpm <- cpm(countsMatrix, log = TRUE)
+#   # countsMatrix_cpm[1:5,1:5]
+#   
+#   library(DESeq2)
+#   countsMatrix_vst <- varianceStabilizingTransformation(countsMatrix)
+#   # countsMatrix_vst[1:5, 1:5]
+#   row.names(countsMatrix_vst) <- row.names(countsMatrix)
+#   
+#   # countsMatrix_rl <- rlog(countsMatrix)
+#   # row.names(countsMatrix_rl) <- row.names(countsMatrix)
+#   # as.numeric(colSums(countsMatrix)) # different amount of reads per sample
+#   # as.numeric(colSums(countsMatrix_rl)) # all normalised to 1 mil (but not if you set log = TRUE)
+#   return(countsMatrix_vst)
+# }
+
+
+```
+
+
+# Join expression and survival data together, and get covariates too
+```{r}
+join_expr_and_surv <- function(countsMatrix, survData, cancer_type) {
+  library(tibble)
+  expr_surv_data <- t(countsMatrix) %>%
+    as.tibble() %>%
+    mutate(bcr_patient_barcode = sapply(colnames(countsMatrix), function(x) substr(x,1,12))) %>%
+    mutate(cohort = cancer_type)
+  
+  # join survival and expression info
+  expr_surv_data <- left_join(survData, expr_surv_data, by="bcr_patient_barcode")
+  expr_surv_data <- expr_surv_data[! is.na(expr_surv_data$cohort),]
+  
+  # add in covariates
+  clinical <- get(paste0(cancer_type, '.clinical'))
+  
+  if (!('patient.age_at_initial_pathologic_diagnosis' %in% names(clinical))) { # sometimes the age is named differently
+    clinical$patient.age_at_initial_pathologic_diagnosis <- clinical$patient.primary_pathology.age_at_initial_pathologic_diagnosis
+  }
+  if (cancer_type == 'PRAD') { # stage is named differently here
+    clinical$patient.stage_event.pathologic_stage <- clinical$patient.stage_event.gleason_grading.gleason_score
+  }
+  if (cancer_type == 'UCEC') {
+    clinical$patient.stage_event.pathologic_stage <- clinical$patient.stage_event.clinical_stage
+  }
+  if (cancer_type %in% c('PRAD', 'BRCA', 'UCEC')) { # no gender needed
+    covars_to_take <- c('patient.age_at_initial_pathologic_diagnosis', 'patient.stage_event.pathologic_stage')
+  } else {
+    covars_to_take <- c('patient.age_at_initial_pathologic_diagnosis', 'patient.gender', 'patient.stage_event.pathologic_stage')
+  }
+  
+  to_take <- clinical[, c(covars_to_take, 'patient.bcr_patient_barcode')]
+  to_take$patient.age_at_initial_pathologic_diagnosis <- as.integer(to_take$patient.age_at_initial_pathologic_diagnosis)
+  
+  # now sort out staging:
+  if (cancer_type == 'PRAD') { # stages are different for PRAD as we only have gleason score data
+    stage_group1 <- c('6')
+    stage_group2 <- c('7')
+    stage_group3 <- c('8', '9', '10')
+  } else {
+    stage_group1 <- c("stage i", "stage ia", "stage ib", "stage ic")
+    stage_group2 <- c("stage ii","stage iia","stage iib" ,"stage iii" ,"stage iiia", "stage iiib", "stage iiic", "stage iiic1", "stage iiic2")
+    stage_group3 <- c("stage iv","stage iva", "stage ivc", "stage ivb", "stage x")
+  }
+  
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group1, 'stage'] <- '1'
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group2, 'stage'] <- '2'
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group3, 'stage'] <- '3'
+  if (!(to_take$stage[[1]] %in% c('1','2','3'))) {
+    print("Can't sort out staging variable. Stage is: ")
+    print(to_take$stage)
+  }
+  # print(to_take$patient.stage_event.pathologic_stage)
+  # print(to_take$stage)
+  
+  if (sum(to_take$stage == '1', na.rm = T) < 10) { # less than 10 samples (yes this is an arbitrary cut-off)
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '1', 'stage'] <- '2'
+  } else if (sum(to_take$stage == '2', na.rm = T) < 10) { 
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '2', 'stage'] <- '1'
+  } else if (sum(to_take$stage == '3', na.rm = T) < 10) {
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '3', 'stage'] <- '2'
+  }
+  
+  # rename stage to new 'stage'
+  covars_to_take_modified <- str_replace(covars_to_take, 'patient.stage_event.pathologic_stage', 'stage')
+  
+  
+  # need to convert to factor (and make dummy vars - model.matrix?)
+  if ('patient.gender' %in% names(to_take)) {
+    to_take$patient.gender <- as.factor(to_take$patient.gender)
+  }
+  to_take$stage <- as.factor(to_take$stage)
+  
+  to_take$bcr_patient_barcode <- str_to_upper(to_take$patient.bcr_patient_barcode)
+
+  # join survival and expression info
+  expr_surv_data <- left_join(expr_surv_data, to_take, by="bcr_patient_barcode")
+  
+  # expr_surv_data[1:5,]
+  return(list(expr_surv_data, covars_to_take_modified))
+}
+```
+
+# Remove NAs
+```{r}
+
+
+# some survival data has NAs. Here we remove them to avoid problems later on
+remove_na_data <- function(expr_surv_data, survFormulaType, genesList, covars_to_take) {
+  
+  if (survFormulaType == 'Genes') { # getting rid of covars to take (if we keep these then the removing NAs is not synchronised)
+      expr_surv_data_no_na <- expr_surv_data[!(names(expr_surv_data) %in% covars_to_take)]
+    } else if (survFormulaType == 'Covars') { # getting rid of genes
+      expr_surv_data_no_na <- expr_surv_data[!(names(expr_surv_data) %in% genesList$V1)]
+    } else {
+      expr_surv_data_no_na <- expr_surv_data
+    }
+    
+    expr_surv_data_no_na <- na.omit(expr_surv_data_no_na)
+  
+}
+
+# survFormulaType = "Genes and Covars"
+# expr_surv_data_train <- remove_na_data(expr_surv_data_train, survFormulaType)
+# expr_surv_data_test <- remove_na_data(expr_surv_data_test, survFormulaType)
+
+
+```
+
+# Fit univariate cox models to find survival-differentiating genes
+Fitting a multivariate coxph model with over 100 genes is probably too much. Se here we feature select genes with a significant effect on survival
+```{r}
+
+# only giving it the expression of the given gene (plus covariates we chose before)
+fit_coxph_model_one_gene <- function(gene, expr_surv_data_train, covars_to_take) {
+  
+  # survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(gene, covars_to_take), collapse = " + ")))
+  survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", gene))
+  
+  survFormula
+  
+  coxph_fit <- coxph(survFormula, data = expr_surv_data_train)
+  
+  # tests_df <- data.frame(LikelihoodRatio = summary(coxph_fit)$logtest, Wald = summary(coxph_fit)$waldtest, Score = summary(coxph_fit)$sctest, gene = gene)
+  # concordance_df <- data.frame(Concordance = summary(coxph_fit)$concordance['C'], se = summary(coxph_fit)$concordance['se(C)'], row.names = c(gene))
+  
+  # is the gene significantly helping prediction?
+  pval <- summary(coxph_fit)$coefficients[gene, 5] # of the z score (from Wald)
+  # print(paste("The gene ", gene, "had a pval of ", signif(pval, 3)))
+  
+  return(pval)
+}
+
+# sig_genes <- data.frame()
+
+# for (gene in genesList$V1) {
+#   pval <- fit_coxph_model_one_gene(gene, expr_surv_data_train)
+#   if (!is.na(pval) & pval < 0.05) {
+#     row = data.frame(gene = gene, pval= pval)
+#     sig_genes <- rbind(sig_genes, row)
+#   }
+# }
+
+# print(paste("We found ", nrow(sig_genes), " significantly differentiaed genes (p < 0.05)"))
+
+
+```
+
+# Fit cox proportional hazard model on training set
+From now on we just use our selected significant genes.
+To get: results with genes, covars, and genes and covars. Want to look at significant vars and whether they correlate with + or - survival. Also store global stats.
+And then run analysis on those significant genes with significant covars?
+```{r}
+# calculate and save hazard coeff
+
+# survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(as.character(sig_genes$gene), covars_to_take), collapse = " + ")))
+
+
+# summary_stats <- data.frame()
+# concordance_stats <- data.frame()
+# var_sig_stats <- data.frame()
+
+fit_coxph_model <- function(survFormula, expr_surv_data_train, survFormulaType, cancer_type) {
+  assign("last.warning", NULL, envir = baseenv()) # clear the previous warning # catching warnings, from https://stackoverflow.com/questions/3903157/how-can-i-check-whether-a-function-call-results-in-a-warning
+  library(purrr)
+  coxph_outputs_and_stuff <- quietly(coxph)
+  outputs_and_stuff <- coxph_outputs_and_stuff(survFormula, data = expr_surv_data_train)
+  # print(outputs_and_stuff$result)
+  coxph_fit <- outputs_and_stuff$result
+  
+  print(paste("For cancer type, ", cancer_type, " got warning: ", outputs_and_stuff$warning))
+  
+  
+  # coxph_fit <- coxph()
+  # if(length(warnings())>0){ # or !is.null(warnings())
+  #   print(paste("Coxph function resulted in a warning! Cancer type ", cancer_type))
+  # }
+  # print(warnings())
+  
+  
+  tests_df <- data.frame(LikelihoodRatio = summary(coxph_fit)$logtest, Wald = summary(coxph_fit)$waldtest, Score = summary(coxph_fit)$sctest, formulaType = survFormulaType)
+  
+  concordance_df <- data.frame(Concordance = summary(coxph_fit)$concordance['C'], se = summary(coxph_fit)$concordance['se(C)'], row.names = c(paste(cancer_type, survFormulaType, "train")))
+  
+  summary_stats <<- rbind(summary_stats, tests_df) # double assignment because they're global
+  concordance_stats <<- rbind(concordance_stats, concordance_df)
+  
+  # how many vars are significant?
+  pvals_per_var <- summary(coxph_fit)$coefficients[, 5] # of the z score (from Wald)
+  
+  var_sig_stats[survFormulaType, 'Num_significant'] <<- sum(pvals_per_var <= 0.05, na.rm = T)
+  var_sig_stats[survFormulaType, 'Total_num'] <<- nrow(summary(coxph_fit)$coefficients)
+  var_sig_stats[survFormulaType, 'Fraction'] <<- (sum(pvals_per_var <= 0.05, na.rm = T))/(nrow(summary(coxph_fit)$coefficients))
+  
+  return(coxph_fit)
+    
+}
+
+
+
+# coxph_fit <- fit_coxph_model(survFormula, expr_surv_data_train)
+
+
+# TODO: check all covars and genes match proportional hazards assumption
+# test.ph <- cox.zph(coxph_fit)
+# test.ph
+# ggcoxzph(test.ph)
+
+```
+
+
+# Split into high and low hazard groups
+```{r}
+
+split_into_groups <- function(coxph_fit, expr_surv_data) {
+  
+  # For now just naively splitting on the median
+  median <- median(coxph_fit$linear.predictors)
+  # we use the linear predictor as the hazard estimate as it a scaled version of the hazard, so the ordering should be the same
+  
+  sum(rowSums(is.na(expr_surv_data)) == 0) == length(coxph_fit$linear.predictors) # should be equal
+  
+  expr_surv_data$hazard <- coxph_fit$linear.predictors
+  expr_surv_data$high_hazard <- expr_surv_data$hazard > median
+  
+  # checking the median looks like roughly the right place:
+  # ggplot(data = expr_surv_data) + 
+  #   geom_histogram(mapping = aes(hazard), bins = 500) + 
+  #   geom_vline(mapping  = aes(xintercept = median), color = "red")
+  # 
+  return(expr_surv_data) 
+}
+
+```
+
+# Fit a KM curve:
+```{r}
+fit_km_curve <- function(expr_surv_data, survFormulaType, cancer_type) {
+  
+  km_fit <- survfit(Surv(times, patient.vital_status) ~ high_hazard, data = expr_surv_data) # fitting it to the hazard we computed
+  
+  # km_fit
+  # summary(km_fit)
+  
+  # logrank test comparing the two curves - are they significantly different? (logrank when rho = 0 which is the default)
+  surv_diff <- survdiff(Surv(times, patient.vital_status) ~ high_hazard, data = expr_surv_data)
+  # names(surv_diff)
+  
+  print(surv_diff)
+  print(paste("should be 2: ", length(surv_diff$n))) # should be 2, if not, I'm not sure the below is correct. 
+  p_val <- pchisq(surv_diff$chisq, length(surv_diff$n)-1, lower.tail = FALSE)
+  
+  
+  # plotting km curve
+  pdf(paste0('KMs/', cancer_type, '_', survFormulaType, '.pdf'))
+  plot(km_fit, conf.int = 0.95, col = c(1,2), mark = "|", sub = paste("Survival difference p value: ", signif(p_val, 3)), main = paste(cancer_type,survFormulaType))
+  dev.off()
+  
+  return(p_val)
+}
+```
+
+
+Run the analysis:
+```{r}
+survFormulaTypes <- c("Genes and covars", "Genes", "Covars") 
+summary_stats <- data.frame()
+concordance_stats <- data.frame()
+var_sig_stats <- data.frame()
+p_vals <- data.frame()
+
+# cancer_type <- 'BLCA'
+cancer_types <- c("BLCA", "BRCA", "COAD", "ESCA", "HNSC", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "PRAD", "THCA", "UCEC")
+for (cancer_type in cancer_types) {
+  # get data and preprocess it
+  result_list <- get_expr_data(cancer_type)
+  countsMatrix <- result_list[[1]]
+  genesList <- result_list[[2]]
+  survData <- get_surv_data(cancer_type)
+  # countsMatrix <- normalise_data(countsMatrix)
+  result_list <- join_expr_and_surv(countsMatrix, survData, cancer_type)
+  expr_surv_data <- result_list[[1]]
+  covars_to_take <- result_list[[2]]
+  
+  for (survFormulaType in survFormulaTypes) {
+    # remove NAs
+    expr_surv_data <- result_list[[1]]
+    expr_surv_data <- remove_na_data(expr_surv_data, survFormulaType, genesList, covars_to_take)
+    
+    # find significant genes through univariate analysis
+    if (survFormulaType == "Genes and covars") {
+      sig_genes <- data.frame()
+      for (gene in genesList$V1) {
+        pval <- fit_coxph_model_one_gene(gene, expr_surv_data, covars_to_take)
+        if (!is.na(pval) & pval < 0.05) {
+          row = data.frame(gene = gene, pval= pval)
+          sig_genes <- rbind(sig_genes, row)
+        }
+      }
+      print(paste("We found ", nrow(sig_genes), " significantly differentiaed genes (p < 0.05)"))
+    }
+    
+    # making the formula
+    if (survFormulaType == "Genes and covars") {
+      survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(as.character(sig_genes$gene), covars_to_take), collapse = " + ")))
+    } else if (survFormulaType == "Genes") {
+      survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(as.character(sig_genes$gene), collapse = " + ")))
+    } else if (survFormulaType == "Covars") {
+      survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(covars_to_take, collapse = " + ")))
+    }
+    
+    # fit model
+    coxph_fit <- fit_coxph_model(survFormula, expr_surv_data, survFormulaType, cancer_type)
+    
+    # split into groups of high and low hazard, and draw the KM curve (and save p_val)
+    expr_surv_data <- split_into_groups(coxph_fit, expr_surv_data)
+    p_val <- fit_km_curve(expr_surv_data, survFormulaType, cancer_type)
+    row = data.frame(p_val = p_val, row.names = c(paste0(cancer_type, '_', survFormulaType)))
+    p_vals <- rbind(p_vals, row)
+  }
+}
+
+
+write.table(p_vals, 'p_vals_for_KM_curves.csv')
+
+```
+
+
+Quick little plot of p_vals:
+```{r}
+p_vals %>%
+  mutate(cancer_type = str_sub(rownames(p_vals), 0, 4)) %>%
+  mutate(data = factor(str_sub(rownames(p_vals), 6), levels = c('Genes and covars', 'Genes','Covars'))) %>%
+  ggplot() +
+    geom_col(aes(x = data, y = -log(p_val), fill = data)) + 
+    facet_grid(cols = vars(cancer_type)) + 
+    geom_hline(aes(yintercept = -log(0.05)), linetype = "dashed") +
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+    ggtitle('Significance of survival differences') + 
+    ggsave('KMs/significance_of_KM_curve_differences.pdf', width = 8)
+```
+

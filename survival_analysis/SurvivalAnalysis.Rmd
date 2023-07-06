@@ -1,0 +1,631 @@
+---
+title: "Survival analysis"
+output: html_notebook
+---
+
+# Question:
+Given the gene expression of the found important genes (lets just stick to one cancer type for now), can they be used to identify good vs worse prognosis? 
+
+AKA, based on their gene expression, can we split them up into two (or more?) groups that have large survival differences?
+
+# Proposed strategy:
+
+On training data: fit a cox proportional hazards model, accounting for necessary covariates/confounders and interaction terms, to get a hazard function. 
+(side idea: look at each covar and how much each gene adds to the risk?)
+
+On test data: apply the hazard function (which only uses the genes and patient info) to get a hazard for each test patient (over time). What is the concordance? Can the ROC curves show that we can predict 1 or 5 year survival?
+
+(can also check the goodness of fit for the hazard function)
+
+# Things to consider:
+- If it is a lot of genes, maybe this is really easy? Try for random sets of genes and compare to see if that is just as successful?
+
+
+# Decisions:
+- We use a *test set*: Some papers do use a test set (Functional proteomics can define prognosis and predict pathologic complete response in patients with breast cancer, Deep Survival: A Deep Cox Proportional Hazards Network, Assessment of performance of survival prediction models for cancer prognosis, A 19-Gene expression signature as apredictor of survival in colorectal cancer). Splitting it up does lose data for fitting, but it shows you can predict survival risk rather than just show your genes are related to the risk.
+- We first do each gene separately to get a smaller set of genes. This is called *'unvariate feature selection'*/'univariate Cox model'
+- We use the cox.zph function to *test the proportional hazards assumption*. The genes and covars model cannot be tested due to a singularity error. Most of the genes in the genes model pass (the one that has a small p value looks fine when you plot it, it's probably being tricked by the outlier) and all of the covars in the covars model pass.
+- We use *rlog normalisation* for now. If this takes too long, we can switch to Variance-stabilizing transformation. Or maybee can use scaled CPM (see CPM function in edgeR), BUT better is to do more robust normalisation.
+- We have removed the splitting and KM drawing. Choosing the cut off is very hard! And choosing the cut off seems to overfit on the training data. We can evaluate our model on the *concordance score of training and test and ROC curves*.
+
+Note: this code was based on code from Dora Bihary.
+
+```{r setup, include=FALSE}
+library(RTCGA.clinical) # survival times
+library(RTCGA.rnaseq) # genes' expression
+library(survminer)
+library(survival)
+library(SummarizedExperiment)
+library(dplyr)
+```
+
+
+# Read in clinical and survival data
+```{r}
+
+get_expr_data <- function(cancer_type) {
+  # get the relaxed gene list
+  genesPath <- "/Tank/methylation-patterns-code/methylation-patterns-izzy/mapping_to_genes/gene_lists/" 
+  genesList <- read.table(paste0(genesPath, 'genes_', cancer_type, '_1500.csv'), sep = ',', header = TRUE)
+  genesList <- data.frame(V1 =unique(genesList$ensembl_gene_id))
+  
+  # get expression data
+  tcgaPath <- "/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/"
+  load(paste0(tcgaPath, cancer_type, 'expression.rda')) #  (loads into 'data' variable)
+  countsMatrix <- assays(data,"raw_counts")$`HTSeq - Counts`
+  # update rownames with symbols
+  rownames(countsMatrix) <- elementMetadata(rowRanges(data))$ensembl_gene_id
+
+  # only keep tumour samples
+  types <- data.frame(colData(data)$barcode)
+  colnames(types) <- "types"
+  typeID <- data.frame(types=as.numeric(substr(do.call(rbind,strsplit(as.character(types$types), split="-"))[,4], 1, 2))) # cancer or normal
+  countsMatrix <- countsMatrix[, typeID <10] # only take cancer
+
+  # now normalise (before we remove a bunch of genes)
+  library(DESeq2)
+  countsMatrix_vst <- varianceStabilizingTransformation(countsMatrix) # now using vst as rlog was taking too long
+  # countsMatrix_vst[1:5, 1:5]
+  row.names(countsMatrix_vst) <- row.names(countsMatrix)
+  countsMatrix <- countsMatrix_vst
+  
+  # take all genes we are interested in
+  genesList <- data.frame(V1 = genesList$V1[genesList$V1 %in% row.names(countsMatrix)]) # only take ones that are in countsMatrix
+  countsMatrix <- countsMatrix[as.character(genesList$V1), ]
+
+  # change all '-' to '_'
+  library(stringr)
+  genesList$V1 <- str_replace(genesList$V1, '-', '_')
+  row.names(countsMatrix) <- str_replace(row.names(countsMatrix), '-', '_')
+  
+  return(list(countsMatrix, genesList))
+}
+
+get_surv_data <- function(cancer_type) {
+  # get survival data
+  survData <- survivalTCGA(get(paste0(cancer_type, '.clinical')))
+  return(survData)
+}
+
+```
+
+
+# Join expression and survival data together, and get covariates too
+```{r}
+join_expr_and_surv <- function(countsMatrix, survData, cancer_type) {
+  library(tibble)
+  expr_surv_data <- t(countsMatrix) %>%
+    as.tibble() %>%
+    mutate(bcr_patient_barcode = sapply(colnames(countsMatrix), function(x) substr(x,1,12))) %>%
+    mutate(cohort = cancer_type)
+  
+  # join survival and expression info
+  expr_surv_data <- left_join(survData, expr_surv_data, by="bcr_patient_barcode")
+  expr_surv_data <- expr_surv_data[! is.na(expr_surv_data$cohort),]
+  
+  # add in covariates
+  clinical <- get(paste0(cancer_type, '.clinical'))
+  
+  if (!('patient.age_at_initial_pathologic_diagnosis' %in% names(clinical))) { # sometimes the age is named differently
+    clinical$patient.age_at_initial_pathologic_diagnosis <- clinical$patient.primary_pathology.age_at_initial_pathologic_diagnosis
+  }
+  if (cancer_type == 'PRAD') { # stage is named differently here
+    clinical$patient.stage_event.pathologic_stage <- clinical$patient.stage_event.gleason_grading.gleason_score
+  }
+  if (cancer_type == 'UCEC') {
+    clinical$patient.stage_event.pathologic_stage <- clinical$patient.stage_event.clinical_stage
+  }
+  if (cancer_type %in% c('PRAD', 'BRCA', 'UCEC')) { # no gender needed
+    covars_to_take <- c('patient.age_at_initial_pathologic_diagnosis', 'patient.stage_event.pathologic_stage')
+  } else {
+    covars_to_take <- c('patient.age_at_initial_pathologic_diagnosis', 'patient.gender', 'patient.stage_event.pathologic_stage')
+  }
+  
+  to_take <- clinical[, c(covars_to_take, 'patient.bcr_patient_barcode')]
+  to_take$patient.age_at_initial_pathologic_diagnosis <- as.integer(to_take$patient.age_at_initial_pathologic_diagnosis)
+  
+  # now sort out staging:
+  if (cancer_type == 'PRAD') { # stages are different for PRAD as we only have gleason score data
+    stage_group1 <- c('6')
+    stage_group2 <- c('7')
+    stage_group3 <- c('8', '9', '10')
+  } else {
+    stage_group1 <- c("stage i", "stage ia", "stage ib", "stage ic")
+    stage_group2 <- c("stage ii","stage iia","stage iib" ,"stage iii" ,"stage iiia", "stage iiib", "stage iiic", "stage iiic1", "stage iiic2")
+    stage_group3 <- c("stage iv","stage iva", "stage ivc", "stage ivb", "stage x")
+  }
+  
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group1, 'stage'] <- '1'
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group2, 'stage'] <- '2'
+  to_take[to_take$patient.stage_event.pathologic_stage %in% stage_group3, 'stage'] <- '3'
+  if (!(to_take$stage[[1]] %in% c('1','2','3'))) {
+    print("Can't sort out staging variable. Stage is: ")
+    print(to_take$stage)
+  }
+  # print(to_take$patient.stage_event.pathologic_stage)
+  # print(to_take$stage)
+  
+  if (sum(to_take$stage == '1', na.rm = T) < 10) { # less than 10 samples (yes this is an arbitrary cut-off)
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '1', 'stage'] <- '2'
+  } else if (sum(to_take$stage == '2', na.rm = T) < 10) { 
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '2', 'stage'] <- '1'
+  } else if (sum(to_take$stage == '3', na.rm = T) < 10) {
+    to_take[!(is.na(to_take$stage)) & to_take$stage == '3', 'stage'] <- '2'
+  }
+  
+  # rename stage to new 'stage'
+  covars_to_take_modified <- str_replace(covars_to_take, 'patient.stage_event.pathologic_stage', 'stage')
+  
+  # need to convert to factor (and make dummy vars - model.matrix?)
+  if ('patient.gender' %in% names(to_take)) {
+    to_take$patient.gender <- as.factor(to_take$patient.gender)
+  }
+  to_take$stage <- as.factor(to_take$stage)
+  
+  to_take$bcr_patient_barcode <- str_to_upper(to_take$patient.bcr_patient_barcode)
+
+  # join survival and expression info
+  expr_surv_data <- left_join(expr_surv_data, to_take, by="bcr_patient_barcode")
+  
+  # expr_surv_data[1:5,]
+  return(list(expr_surv_data, covars_to_take_modified))
+}
+```
+
+Covariates we account for:
+
+- Age: "patient.age_at_initial_pathologic_diagnosis" or "patient.diagnosis_age" 
+- Gender: "patient.gender"
+- Stage:
+"patient.stage_event.clinical_stage" 
+"patient.stage_event.gleason_grading.gleason_score"
+"patient.stage_event.igcccg_stage"
+"patient.stage_event.masaoka_stage" 
+"patient.stage_event.pathologic_stage"
+
+No longer account for race as this was causing convergence issues.
+
+- BMI: "patient.weight"(kg)/("patient.height"(m))^2 - and categorise. >=30 means obesity, >=25 means overweight, >=18.5 means normal, else underweight. Cite "Obesity: preventing and managing the global epidemic" by WHO
+
+- Treatment - this gets very complicated, and it would be cool if we could predict prognosis before any treatment. So for now I will leave this out. BUT this may skew the results, depending on whether the samples were taken before or after treatment (if after, and treatment alters the gene expression levels significantly, then we will think we can predict a difference but it's just from the effect of this treatment).
+
+- For lung and HNSC: add smoking - "patient.age_began_smoking_in_years" "patient.stopped_smoking_year" 
+- For HNSC: tissue type - "patient.tumor_tissue_site" (need to check)
+- For BRCA: ER status, PR status, HER2 final status?
+
+
+# Split into training (75%) and test (25%) set
+
+```{r}
+
+
+# doesn't regenerate the training indices so they stay the same
+get_train_and_test <- function(expr_surv_data, training_indices) {
+  expr_surv_data_train <- expr_surv_data[training_indices, ]
+  expr_surv_data_test <- expr_surv_data[-training_indices, ]
+  
+  return(list(expr_surv_data_train, expr_surv_data_test))
+}
+
+```
+
+# Remove NAs
+```{r}
+
+
+# some survival data has NAs. Here we remove them to avoid problems later on
+remove_na_data <- function(expr_surv_data, survFormulaType, genesList, covars_to_take) {
+  
+  if (survFormulaType == 'Genes') { # getting rid of covars to take (if we keep these then the removing NAs is not synchronised)
+      expr_surv_data_no_na <- expr_surv_data[!(names(expr_surv_data) %in% covars_to_take)]
+    } else if (survFormulaType == 'Covars') { # getting rid of genes
+      expr_surv_data_no_na <- expr_surv_data[!(names(expr_surv_data) %in% genesList$V1)]
+    } else {
+      expr_surv_data_no_na <- expr_surv_data
+    }
+    
+    expr_surv_data_no_na <- na.omit(expr_surv_data_no_na)
+}
+
+# survFormulaType = "Genes and Covars"
+# expr_surv_data_train <- remove_na_data(expr_surv_data_train, survFormulaType)
+# expr_surv_data_test <- remove_na_data(expr_surv_data_test, survFormulaType)
+
+
+```
+
+
+# Fit univariate cox models to find survival-differentiating genes
+Fitting a multivariate coxph model with over 100 genes is probably too much. Se here we feature select genes with a significant effect on survival
+```{r}
+
+# only giving it the expression of the given gene (plus covariates we chose before)
+fit_coxph_model_one_gene <- function(gene, expr_surv_data_train, covars_to_take) {
+  
+  # survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(gene, covars_to_take), collapse = " + ")))
+  survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", gene))
+  
+  survFormula
+  
+  coxph_fit <- coxph(survFormula, data = expr_surv_data_train)
+  
+  # tests_df <- data.frame(LikelihoodRatio = summary(coxph_fit)$logtest, Wald = summary(coxph_fit)$waldtest, Score = summary(coxph_fit)$sctest, gene = gene)
+  # concordance_df <- data.frame(Concordance = summary(coxph_fit)$concordance['C'], se = summary(coxph_fit)$concordance['se(C)'], row.names = c(gene))
+  
+  # is the gene significantly helping prediction?
+  pval <- summary(coxph_fit)$coefficients[gene, 5] # of the z score (from Wald)
+  # print(paste("The gene ", gene, "had a pval of ", signif(pval, 3)))
+  
+  return(pval)
+}
+
+# sig_genes <- data.frame()
+
+# for (gene in genesList$V1) {
+#   pval <- fit_coxph_model_one_gene(gene, expr_surv_data_train)
+#   if (!is.na(pval) & pval < 0.05) {
+#     row = data.frame(gene = gene, pval= pval)
+#     sig_genes <- rbind(sig_genes, row)
+#   }
+# }
+
+# print(paste("We found ", nrow(sig_genes), " significantly differentiaed genes (p < 0.05)"))
+
+```
+
+
+# Fit cox proportional hazard model on training set
+From now on we just use our selected significant genes.
+To get: results with genes, covars, and genes and covars. Want to look at significant vars and whether they correlate with + or - survival. Also store global stats.
+And then run analysis on those significant genes with significant covars?
+```{r}
+# calculate and save hazard coeff
+
+# survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(as.character(sig_genes$gene), covars_to_take), collapse = " + ")))
+
+
+# summary_stats <- data.frame()
+# concordance_stats <- data.frame()
+# var_sig_stats <- data.frame()
+
+fit_coxph_model <- function(survFormula, expr_surv_data_train, survFormulaType, cancer_type) {
+  assign("last.warning", NULL, envir = baseenv()) # clear the previous warning # catching warnings, from https://stackoverflow.com/questions/3903157/how-can-i-check-whether-a-function-call-results-in-a-warning
+  library(purrr)
+  coxph_outputs_and_stuff <- quietly(coxph)
+  outputs_and_stuff <- coxph_outputs_and_stuff(survFormula, data = expr_surv_data_train)
+  # print(outputs_and_stuff$result)
+  coxph_fit <- outputs_and_stuff$result
+  
+  print(paste("For cancer type, ", cancer_type, " got warning: ", outputs_and_stuff$warning))
+  
+  tests_df <- data.frame(LikelihoodRatio = summary(coxph_fit)$logtest, Wald = summary(coxph_fit)$waldtest, Score = summary(coxph_fit)$sctest, formulaType = survFormulaType)
+  
+  concordance_df <- data.frame(Concordance = summary(coxph_fit)$concordance['C'], se = summary(coxph_fit)$concordance['se(C)'], row.names = c(paste(cancer_type, survFormulaType, "train")))
+  
+  summary_stats <<- rbind(summary_stats, tests_df) # double assignment because they're global
+  concordance_stats <<- rbind(concordance_stats, concordance_df)
+  
+  # how many vars are significant?
+  pvals_per_var <- summary(coxph_fit)$coefficients[, 5] # of the z score (from Wald)
+  
+  var_sig_stats[survFormulaType, 'Num_significant'] <<- sum(pvals_per_var <= 0.05, na.rm = T)
+  var_sig_stats[survFormulaType, 'Total_num'] <<- nrow(summary(coxph_fit)$coefficients)
+  var_sig_stats[survFormulaType, 'Fraction'] <<- (sum(pvals_per_var <= 0.05, na.rm = T))/(nrow(summary(coxph_fit)$coefficients))
+  
+  return(coxph_fit)
+    
+}
+
+
+
+# coxph_fit <- fit_coxph_model(survFormula, expr_surv_data_train)
+
+
+# check all covars and genes match proportional hazards assumption
+# test.ph <- cox.zph(coxph_fit)
+# test.ph
+# ggcoxzph(test.ph)
+
+```
+
+A forest plot of this fitted model:
+```{r}
+make_forest <- function(coxph_fit, cancer_type, survFormulaType) {
+  
+  hr <- exp(coxph_fit$coefficients)
+  hr_df <- data.frame(hr = hr)
+  hr_df$factor <- rownames(hr_df)
+  z_pvals <- summary(coxph_fit)$coefficients[, 5]
+  hr_df$waldtest_pvalue <- z_pvals
+  # hr_df <- hr_df[rownames(hr_df) != 'ZMYND10_AS1', ] # this hr is massive?!!!
+  
+  ggplot(data = hr_df) + 
+    geom_point(aes(y = factor, x = hr, colour = waldtest_pvalue < 0.05)) + 
+    geom_vline(aes(xintercept = 1), linetype="dotted")
+  ggsave(paste('forest_plot_', cancer_type, '_', survFormulaType, '.pdf', sep = ''))
+}
+
+
+```
+
+
+# Check the proportional hazards assumption - the p values should not be tiny and the lines should be roughly horizontal
+```{r}
+
+check_prop_hazards <- function(coxph_fit, survFormulaType, make_plot) {
+  cox_zph <- cox.zph(coxph_fit, transform="km", terms=TRUE)
+  
+  if (make_plot) plot(cox_zph, main = survFormulaType)
+  
+  return(cox_zph)
+}
+
+# check_prop_hazards(coxph_fit, survFormulaType, TRUE)
+
+```
+
+
+# Use fitted model to get hazards on the test set:
+```{r}
+
+predict_hazard_on_test <- function(coxph_fit, expr_surv_data_test, survFormulaType, cancer_type) {
+  test_hazards <- predict(coxph_fit, expr_surv_data_test, type = 'lp')
+  
+  expr_surv_data_test$hazard <- test_hazards
+  
+  # also calculate test set concordance
+  library(survcomp)
+  c_index <- concordance.index(expr_surv_data_test$hazard, surv.time = expr_surv_data_test$times, surv.event = expr_surv_data_test$patient.vital_status)
+  
+  concordance_df <- data.frame(Concordance = c_index$c.index, se = c_index$se, row.names = c(paste(cancer_type, survFormulaType, "test")))
+  concordance_stats <<- rbind(concordance_stats, concordance_df)
+  
+  return(expr_surv_data_test)
+  
+}
+
+# expr_surv_data_test <- predict_hazard_on_test(coxph_fit, expr_surv_data_test)
+
+```
+
+# More ways to evaluate model on test set:
+- Can we predict survival on the test data, and evaluate 5 year predicted survival??
+
+Time dependent ROC curve.
+This calculates the *Cumulative/Dynamic* time-dependent ROC curve, estimated by the *Inverse Probability of Censoring Weighting (IPCW)* method. There are no competing risks in this case.
+
+## Cumulative/Dynamic meaning:
+Cumulative cases are all individuals that experienced an event prior to or at time t (t_event <= t)
+Dynamic controls are those where the event has not yet hapenned (t_event > t).
+So we are evaluating how well our model can distinguish samples that fail by a given time from subjects that fail after this time. (explanation from https://scikit-survival.readthedocs.io/en/latest/generated/sksurv.metrics.cumulative_dynamic_auc.html)
+
+```{r}
+# # practising time dependent ROC curves:
+# # code from: https://publicifsv.sund.ku.dk/~tag/Teaching/share/R-tutorials/Advanced-statistics/AssessmentCompetingRisksPredictions.html
+# 
+# library(survival)
+# data(pbc,package="survival")
+# pbc$logbili <- log(pbc$bili) # this is "serum bilirunbin (mg/dl)" which we are using as a predictive marker
+# # pbc <- na.omit(pbc[,c(2,3,5,6,10,21,22,23)])
+# # str(pbc)
+# head(pbc)
+# 
+# library(timeROC)
+# roc.bili <- with(pbc,timeROC(T=time,delta=status,marker=logbili,cause=2,iid=TRUE,time=365.25*5))
+# plot(roc.bili,time=365.25*5,lwd=3)
+# roc.bili
+# 
+# 
+# # and we can do the same thing with the survivalROC package: (but I think I prefer timeROC)
+# library(survivalROC)
+# status2 <- pbc$status
+# status2[status2 == 2] <- 1
+# roc.bili.survROC <- with(pbc, survivalROC(Stime=time, status = status2, marker=logbili, entry = NULL, predict.time = 365.25*5, cut.values =NULL, method = "NNE", lambda = 0.001, span = NULL, window ="symmetric"))
+# plot(roc.bili.survROC$FP, roc.bili.survROC$TP, type="l", xlim=c(0,1), ylim=c(0,1))
+```
+
+Time dependent ROC curve on the predicted hazard:
+```{r}
+
+plot_ROCs <- function(cancer_type, expr_surv_data_train, expr_surv_data_test, coxph_fit) {
+  # We will make them for both the training and test set
+  # when we exp these (to get hazard ratio) it makes no difference as the exp function is monotonically increasing
+  test_hazards <- expr_surv_data_test$hazard
+  train_hazards <- predict(coxph_fit, expr_surv_data_train, type = 'lp')
+  
+  # training ROC curves:
+  library(timeROC)
+  roc.train.5year <- with(expr_surv_data_train, timeROC(T=times,delta=patient.vital_status,marker=train_hazards,cause=1,iid=TRUE,time=365.25*5))
+  roc.train.5year
+  pdf(paste('ROCs/', cancer_type, '_train_5year.pdf', sep = ''))
+  plot(roc.train.5year,time=365.25*5,lwd=3)
+  dev.off()
+  
+  roc.train.1year <- with(expr_surv_data_train, timeROC(T=times,delta=patient.vital_status,marker=train_hazards,cause=1,iid=TRUE,time=365.25))
+  roc.train.1year
+  pdf(paste('ROCs/', cancer_type, '_train_1year.pdf', sep = ''))
+  plot(roc.train.1year,time=365.25,lwd=3)
+  dev.off()
+  
+  # testing ROC curves:
+  roc.test.5year <- with(expr_surv_data_test, timeROC(T=times,delta=patient.vital_status,marker=test_hazards,cause=1,iid=TRUE,time=365.25*5))
+  roc.test.5year
+  pdf(paste('ROCs/', cancer_type, '_test_5year.pdf', sep = ''))
+  plot(roc.test.5year,time=365.25*5,lwd=3)
+  dev.off()
+  
+  roc.test.1year <- with(expr_surv_data_test, timeROC(T=times,delta=patient.vital_status,marker=test_hazards,cause=1,iid=TRUE,time=365.25))
+  roc.test.1year
+  pdf(paste('ROCs/', cancer_type, '_test_1year.pdf', sep = ''))
+  plot(roc.test.1year,time=365.25,lwd=3)
+  dev.off()
+  
+  row <- c(roc.train.1year$AUC["t=365.25"], roc.train.5year$AUC["t=1826.25"], roc.test.1year$AUC["t=365.25"], roc.test.5year$AUC["t=1826.25"])
+  df_AUC <- t(data.frame(test = row))
+  colnames(df_AUC) <- c('train_1year', 'train_5year', 'test_1year', 'test_5year')
+  rownames(df_AUC) <- cancer_type
+  return(df_AUC)
+}
+
+# plot_ROCs('test')
+
+
+```
+
+(X-means) * beta = linear.predictor
+Scaled by the means (for each sample)
+But this still leaves the samples the same distances apart so the linear predictor can be used as the hazard estimate.
+Do we need to exp() it? exp() is monotinically increasing so not if you are just looking at which one is bigger than another one.
+
+
+# Compare models - is the Covars and Genes model significantly different than the Covars model?
+```{r}
+# this is following chapter 6.3 in Applied Survival Analysis Using R
+compare_models <- function(model_covars, model_genes_and_covars) {
+  # print(summary(model_covars))
+  # print(summary(model_genes_and_covars))
+  result <- anova(model_covars, model_genes_and_covars)
+  # print(result)
+  
+  # want the stats comparing the first model to the second model:
+  chisq <- result$Chisq[[2]]
+  result$Df[[2]]
+  result$`P(>|Chi|)`[[2]]
+  row = data.frame(chisq = result$Chisq[[2]], df = result$Df[[2]], pval = result$`P(>|Chi|)`[[2]])
+  rownames(row) <- c(cancer_type)
+  
+  return(row)
+  
+}
+```
+
+
+# Now run this on all types of formulae we want to test:
+```{r}
+library(caret)
+
+survFormulaTypes <- c("Genes and covars", "Genes", "Covars") 
+summary_stats <- data.frame()
+concordance_stats <- data.frame()
+var_sig_stats <- data.frame()
+aucs <- data.frame()
+model_comparisons <- data.frame()
+num_sig_genes <- data.frame()
+
+run_survival_analysis <- function(survFormulaTypes, cancer_type, num_repeats) {
+  print("About to preprocess cancer type")
+  print(cancer_type)
+  
+  # get data and preprocess it
+  result_list <- get_expr_data(cancer_type)
+  countsMatrix <- result_list[[1]]
+  genesList <- result_list[[2]]
+  survData <- get_surv_data(cancer_type)
+  # countsMatrix <- normalise_data(countsMatrix) # now we normalise in get_expr_data
+  result_list <- join_expr_and_surv(countsMatrix, survData, cancer_type)
+  expr_surv_data <- result_list[[1]]
+  covars_to_take <- result_list[[2]]
+  
+  print("About to train models")
+  for (n in 1:num_repeats) {
+    training_indices <- createDataPartition(expr_surv_data$patient.vital_status, p = 0.75, list = FALSE)
+  
+    model_covars <- NULL
+    model_genes_and_covars <- NULL
+    
+    for (survFormulaType in survFormulaTypes) {
+    
+      # get train and test
+      expr_surv_data_l <- get_train_and_test(expr_surv_data, training_indices)
+      expr_surv_data_train <- expr_surv_data_l[[1]]
+      expr_surv_data_test <- expr_surv_data_l[[2]]
+      
+      # remove NAs
+      expr_surv_data_train <- remove_na_data(expr_surv_data_train, survFormulaType, genesList, covars_to_take)
+      expr_surv_data_test <- remove_na_data(expr_surv_data_test, survFormulaType, genesList, covars_to_take)
+      
+      # find significant genes through univariate analysis
+      if (survFormulaType == "Genes and covars") {
+        
+        sig_genes <- data.frame()
+        for (gene in genesList$V1) {
+          pval <- fit_coxph_model_one_gene(gene, expr_surv_data_train, covars_to_take)
+          if (!is.na(pval) & pval < 0.05) {
+            row = data.frame(gene = gene, pval= pval)
+            sig_genes <- rbind(sig_genes, row)
+          }
+        }
+        print(paste("We found ", nrow(sig_genes), " significantly differentiaed genes (p < 0.05)"))
+        row <- data.frame(num_sig_genes = nrow(sig_genes), row.names = c(paste(cancer_type, '_', survFormulaType, sep = '')))
+        num_sig_genes <<- rbind(num_sig_genes, row)
+      }
+      
+      if (nrow(sig_genes) != 0) { # only if we found at least one probe
+      # get the formula
+    
+        # making the formula
+        if (survFormulaType == "Genes and covars") {
+          survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(c(as.character(sig_genes$gene), covars_to_take), collapse = " + ")))
+        } else if (survFormulaType == "Genes") {
+          survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(as.character(sig_genes$gene), collapse = " + ")))
+        } else if (survFormulaType == "Covars") {
+          survFormula <- as.formula(paste0("Surv(times, patient.vital_status) ~ ", str_flatten(covars_to_take, collapse = " + ")))
+        }
+        
+        # fit model and estimate test hazards
+        coxph_fit <- fit_coxph_model(survFormula, expr_surv_data_train, survFormulaType, cancer_type)
+        expr_surv_data_test <- predict_hazard_on_test(coxph_fit, expr_surv_data_test, survFormulaType, cancer_type)
+        if (survFormulaType == 'Covars') {
+          model_covars <- coxph_fit
+        }
+        else if (survFormulaType == 'Genes and covars') {
+          model_genes_and_covars <- coxph_fit
+        }
+        
+        # make forest plot of model
+        make_forest(coxph_fit, cancer_type, survFormulaType)
+        
+        # create 1 and 5 year ROC curves to see how correct the hazard is
+        out <- tryCatch({
+          AUCs <- plot_ROCs(paste(cancer_type, '_', survFormulaType, '_', n, sep = ''), expr_surv_data_train, expr_surv_data_test, coxph_fit)
+          aucs <<- rbind(aucs, AUCs) # add on AUCs to global dataframes (we already added on concordance stats to its dataframe before)
+        }, error = function(cond) {
+          print("Couldn't make ROC curve for some reason.")
+        })
+      }
+    }
+    
+    row <- compare_models(model_covars, model_genes_and_covars)
+    model_comparisons <<- rbind(model_comparisons, row)
+    
+  }
+  
+}
+
+# run_survival_analysis(survFormulaTypes, 'BLCA')
+
+# concordance_stats
+# summary_stats
+# var_sig_stats
+
+
+# NOTE: PRAD and THCA don't converge most of the time!
+# cancer_types <- c("BLCA", "BRCA", "COAD", "ESCA", "HNSC", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "PRAD", "THCA", "UCEC")
+cancer_types <- c("BLCA", "BRCA", "COAD", "ESCA", "HNSC", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "UCEC")
+# cancer_types <- c("BLCA", "BRCA", "COAD", "HNSC", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "THCA", "UCEC")
+# ESCA is causing problems so I am skipping this one for now, also PRAD. 
+
+num_repeats <- 30 # repeat a number of times to get a mean and variance of the resulting metrics (as I am not so sure about the robustness)
+for (cancer_type in cancer_types) {
+  run_survival_analysis(survFormulaTypes, cancer_type, num_repeats)
+}
+
+write.table(model_comparisons, 'model_comparisons.csv')
+write.table(aucs, 'aucs.csv')
+write.table(concordance_stats, 'concordance_stats.csv')
+write.table(num_sig_genes, 'num_sig_genes.csv')
+
+
+```
+
+

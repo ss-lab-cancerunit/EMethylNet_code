@@ -1,0 +1,146 @@
+---
+title: "Gene stats"
+output: html_notebook
+---
+
+Looking at a gene list, what proportion are coding/non-coding and what types are they?
+
+Read in the gene list:
+```{r}
+cancer_type = 'BRCA'
+
+genes <- read.table(paste0('../../../mapping_to_genes/gene_lists/genes_', cancer_type, '_1500.csv'), sep = ',', header = TRUE)
+
+```
+
+
+Use ensembl biomart to get the gene names and types:
+```{r}
+source('../../ensembl_id_to_something_else.R')
+genes_types <- ensembl_to_simpler(unique(genes$ensembl_gene_id), 'gene_biotype', remove_duplicates = FALSE)
+genes_types <- distinct(genes_types)
+```
+
+Simple bar chart of gene types:
+
+```{r}
+library(ggplot2)
+ggplot(genes_types) +
+  geom_bar(aes(x = gene_biotype, y = (..count..)/sum(..count..))) + 
+  coord_flip()
+
+```
+
+Now get all the gene types for all the cancer types (so we can plot them together):
+
+```{r}
+cancer_types <- c('BLCA', 'BRCA', 'COAD', 'ESCA', 'HNSC', 'KIRC', 'KIRP', 'LIHC', 'LUAD', 'LUSC', 'PRAD', 'THCA', 'UCEC', '')
+all_proportions <- data.frame()
+library(dplyr)
+
+for (cancer_type in cancer_types) {
+  # get the gene list
+  genes <- read.table(paste0('../../../mapping_to_genes/gene_lists/genes_', cancer_type, '_1500.csv'), sep = ',', header = TRUE)
+  
+  #  get the type for each gene
+  genes_types <- ensembl_to_simpler(unique(genes$ensembl_gene_id), 'gene_biotype', remove_duplicates = FALSE)
+  genes_types <- distinct(genes_types)
+  
+  # count the types, turn them into proportions, and add the cancer type on
+  proportions <- as.data.frame(table(genes_types$gene_biotype)) %>%
+    mutate(prop = Freq/sum(Freq)) %>%
+    mutate(cancer_type = cancer_type)
+  
+  # combine with the others
+  all_proportions <- rbind(all_proportions, proportions)
+}
+
+# arrange in terms of proportion
+all_proportions <- all_proportions %>%
+  arrange(desc(prop))
+
+# reorder factor levels in order of proportion, so it gets ordered like this in the plot
+all_proportions$Var1 <- factor(all_proportions$Var1, levels = as.character(unique(all_proportions$Var1)))
+
+all_proportions
+
+all_proportions$cancer_type[all_proportions$cancer_type == ''] <- 'Multiclass'
+```
+
+Then plot in a beeswarm plot:
+
+```{r}
+# example copied from https://www.r-statistics.com/2011/03/beeswarm-boxplot-and-plotting-it-with-r/
+# install.packages('beeswarm')
+library(beeswarm)
+
+# taken from seaborn paired palette, adding on two more colours (see xgboost/feature_stats/plot_feature_stats.ipynb)
+colour_map <- c('#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00','#cab2d6', '#6a3d9a', '#ffff99', '#b15928', '#6e6e6e', '#000000')
+cancer_types[cancer_types == ''] <- 'Multiclass'
+names(colour_map) <- cancer_types
+
+all_proportions$cancer_type <- factor(all_proportions$cancer_type, levels = cancer_types)
+
+
+pdf(paste('beeswarm_gene_types.pdf', sep = ''), width = 35)
+
+
+
+beeswarm(prop ~ Var1, data = all_proportions, method = 'swarm', pch = 20, pwcol = colour_map[all_proportions$cancer_type], cex.axis = 0.7, xlab = 'Gene type', ylab = 'proportion in gene list')
+legend(x = 0.2, y = 0.75, legend = levels(all_proportions$cancer_type), col = colour_map, pch = 20, title = 'Cancer type', cex = 0.75)
+
+dev.off()
+```
+
+Save proportions as a csv for reference:
+```{r}
+to_save <- all_proportions %>%
+  arrange(cancer_type)
+
+write.csv(to_save, paste('proportions_of_gene_types.csv', sep = ''), row.names = FALSE)
+
+View(arrange(to_save[to_save$Var1 == 'lncRNA', c('Freq', 'cancer_type')], desc(Freq)))
+
+```
+
+
+
+
+Plotting a more visually-pleasing version:
+
+```{r}
+
+# only plot top 5
+to_keep <- c('protein_coding', 'lncRNA', 'snoRNA', 'misc_RNA', 'miRNA')
+to_plot <- all_proportions[all_proportions$Var1 %in%to_keep, ]
+to_plot$Var1 <- factor(to_plot$Var1, levels = to_keep)
+
+# taken from seaborn paired palette, adding on two more colours (see xgboost/feature_stats/plot_feature_stats.ipynb)
+colour_map <- c('#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00','#cab2d6', '#6a3d9a', '#ffee00', '#b15928', '#6e6e6e', '#000000')
+names(colour_map) <- cancer_types
+
+to_plot$cancer_type <- factor(to_plot$cancer_type, levels = cancer_types)
+
+svg(paste('beeswarm_gene_types_clean.svg', sep = ''), width = 6.8)
+
+
+par(bty = 'n')
+beeswarm(prop ~ Var1, data = to_plot, method = 'swarm', labels = c('protein\n coding', 'lncRNA\n', 'snoRNA\n', 'misc\n RNA', 'miRNA\n'), pch = 20, cex = 1.6, spacing = 0.8, pwcol = colour_map[to_plot$cancer_type], cex.axis = 1.4, cex.lab = 1.5,  xlab = 'Gene type', ylab = 'Fraction in gene list')
+legend(x = 4.3, y = 0.8, legend = levels(all_proportions$cancer_type), col = colour_map, pch = 20, title = 'Cancer type', cex = 1.1, pt.cex = 1.8)
+
+dev.off()
+
+
+```
+
+
+What is the range of lncRNA fractions?
+```{r}
+
+all_proportions[all_proportions$Var1 == 'lncRNA', c('prop', 'cancer_type')]
+all_proportions[all_proportions$Var1 == 'protein_coding', c('prop', 'cancer_type')]
+
+```
+
+LncRNA varies between 14% (LUSC) and 26% (LUAD). Interesting that these are both lung cancers but have the most difference in lncRNA proportions. Multiclass has 18.7% lncRNAs.
+

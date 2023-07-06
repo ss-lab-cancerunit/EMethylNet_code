@@ -1,0 +1,25 @@
+---
+title: "Get multiclass lncRNAs"
+output: html_notebook
+---
+
+A small script to save a text file of the multiclass lncRNAs.
+```{r}
+# read in multiclass genes
+genes <- read.table('../../mapping_to_genes/gene_lists/genes__1500.csv', sep = ',', header = TRUE)
+
+# now load in their gene type
+source('../ensembl_id_to_something_else.R')
+genes_types <- ensembl_to_simpler(genes$ensembl_gene_id, 'gene_biotype', remove_duplicates = FALSE)
+
+# and add to genes
+genes <- merge(genes, genes_types, by = 'ensembl_gene_id', all.x = TRUE, all.y = FALSE, sort = FALSE)
+genes <- distinct(genes)
+
+# only keep lncRNAs
+lncRNAs <- genes[genes$gene_biotype == 'lncRNA', ]
+
+# save as names
+write.table(lncRNAs$gene_name, 'multiclass_lncRNAs.txt', row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+

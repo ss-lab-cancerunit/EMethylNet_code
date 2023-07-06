@@ -1,0 +1,10 @@
+nodes sizes
+Metabolic_pathways 190
+Endocytosis 53
+Wnt_signaling_pathway 35
+TGF-beta_signaling_pathway 23
+Axon_guidance 39
+Hippo_signaling_pathway 39
+Signaling_pathways_regulating_pluripotency_of_stem_cells 44
+Pathways_in_cancer 94
+Breast_cancer 31

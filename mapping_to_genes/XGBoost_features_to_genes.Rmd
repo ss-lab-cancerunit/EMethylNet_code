@@ -1,0 +1,141 @@
+---
+title: "XGBoost features to genes"
+output: html_notebook
+---
+
+# Utility functions that we need
+```{r}
+get_probes <- function(cancer_type, total_probes) {
+  if (cancer_type == '') {
+    feature_file <- paste('../xgboost/depth3est800lr189/feature_importances/', cancer_type, '_concatenated.csv', sep='') # features found by xgboost
+  } else {
+    feature_file <- paste('../xgboost/feature_importances/', cancer_type, '_concatenated.csv', sep='') # features found by xgboost
+  }
+  print("Using features from:")
+  print(feature_file)
+  features = read.table(feature_file, sep = ',', header = TRUE)
+  probes <- total_probes$probe[features$feature + 1] # feature indexing is from 0, but R indexing is from 1, so we add 1 - I have verified this is correct
+  return(probes)
+}
+
+
+save_background_list <- function(cancer_type, total_probes, my_mapping) {
+  background_genes <- as.data.frame(my_mapping[my_mapping$probe %in% total_probes$probe])[, c('ensembl_gene_id', 'gene_name')]
+  background_genes
+  
+  name <- paste('background_genes/', cancer_type, '_background_genes.csv', sep = '')
+  write.table(background_genes, name, row.names = FALSE)
+
+}
+
+library(rtracklayer)
+load('/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/BRCAmethylation.rda')
+probe_locations <- granges(rowRanges(data))
+
+save_probe_bed <- function(probes, my_mapping) {
+  these_probe_locations <- probe_locations[probes]
+  
+  export.bed(object = these_probe_locations,con=paste0('probe_lists/probes_', cancer_type, '.bed'))
+}
+
+```
+
+# Get and save the gene and probe lists
+```{r}
+library(data.table)
+
+cancer_types = c('', 'BLCA', 'BRCA', 'COAD', 'ESCA', 'HNSC', 'KIRC', 'KIRP', 'LIHC', 'LUAD', 'LUSC', 'PRAD', 'THCA', 'UCEC')
+mapping_file <- 'checking_mapping/my_mapping_1500.rda'
+load(mapping_file)
+for (cancer_type in cancer_types) {
+  print(paste("Doing cancer type: ", cancer_type))
+    
+  # from the original data, read in the probe list:
+  if (cancer_type == '') {
+    total_probes <- fread('../data_preprocessing/dataset/pandas/m_values/TCGA-all.csv', sep = '\t', select = c(1))
+  } else {
+    total_probes <- fread(paste('../data_preprocessing/dataset/pandas/m_values/TCGA-', cancer_type, '.csv', sep = ''), sep = '\t', select = c(1), header = TRUE)
+  }
+    
+  probes <- get_probes(cancer_type, total_probes)
+  my_mapping_specific <- my_mapping[my_mapping$probe %in% probes]
+  genes <- as.data.frame(my_mapping_specific)[, c('ensembl_gene_id', 'gene_name')]
+  genes
+  
+  # save probes and genes, and specific mappings
+  write.table(genes, paste('gene_lists/genes_', cancer_type, '_1500.csv', sep = ''), sep = ',', row.names = FALSE)
+  write.table(as.data.frame(probes), paste('probe_lists/probes_', cancer_type, '.csv', sep = ''), sep = ',', row.names = FALSE, col.names = FALSE)
+  save_probe_bed(probes, my_mapping) # also save as bed file
+  write.table(my_mapping_specific, paste0('specific_mappings/mapping_', cancer_type, '.csv'), sep = ',')
+  
+  
+  # and background list
+  save_background_list(cancer_type, total_probes, my_mapping)
+}
+
+
+```
+
+# Making bed file with the probes that map to more than 1 gene, for multiclass
+```{r}
+my_mapping_specific <- read.table('specific_mappings/mapping_.csv', sep = ',')
+my_mapping_specific
+
+# which probes map to more than 1 gene?
+mapping_more_than_1 <- my_mapping_specific %>%
+  group_by(probe) %>%
+  mutate(n = n()) %>%
+  filter(n > 1)
+
+bed_file <- mapping_more_than_1 %>%
+  group_by(probe) %>%
+  mutate(genes = paste(gene_name, collapse = ',')) %>%
+  mutate(label = paste0(probe, ':', genes)) %>%
+  ungroup() %>%
+  select(seqnames, start, end, label)
+
+bed_file <- bed_file[!duplicated(bed_file), ]
+bed_file$start <- bed_file$start - 1 # start indexed from 0
+
+bed_file
+write.table(bed_file, 'multi_probes_mapping_to_multiple_genes.bed', col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+# Looking at probes that map to more than 1 gene
+```{r}
+
+mean(mapping_more_than_1$gene_feature.ranges.start < mapping_more_than_1$gene_feature.ranges.end) # so no matter what strand, start is always smaller than the end
+
+to_plot <- mapping_more_than_1 %>%
+  ungroup() %>%
+  mutate(is_inside = ((end < gene_feature.ranges.end) & (start > gene_feature.ranges.start))) %>% # is the probe inside the gene?
+  group_by(probe) %>%
+  mutate(all_inside = mean(is_inside) == 1) %>%
+  mutate(num_inside = sum(is_inside)) %>%
+  mutate(num_outside = sum(is_inside == FALSE)) %>%
+  mutate(two_inside = (num_inside == 2 & num_outside == 0), one_in_one_out = (num_inside == 1 & num_outside == 1), two_outside = (num_inside == 0 & num_outside == 2)) %>%
+  select(probe, all_inside, num_inside, num_outside, two_inside, one_in_one_out, two_outside) %>%
+  distinct() %>%
+  mutate(class = ifelse(two_inside == TRUE, 'two genes overlapping probe', ifelse(one_in_one_out == TRUE, 'one gene overlapping, one not', ifelse(two_outside == TRUE, 'two genes not overlapping', 'mapped to more than two genes'))))
+
+ggplot(to_plot) +
+  geom_bar(aes(class)) + 
+  coord_flip()
+  
+# so of the probes mapping to 2 genes, around half have both genes overlapping the probe, and around half have one of the genes overlapping the probe. A small number have neither genes overlapping the probe.
+  
+```
+
+
+# Multiclass probes - is there a chromosome bias?
+```{r}
+multi_probes <- read.table('probe_lists/probes_.bed')
+multi_probes %>%
+  distinct() %>%
+  mutate(V1 = factor(V1, levels = c("chr1", "chr2", "chr3", "chr4","chr5", "chr6", "chr7", "chr8", "chr9",    "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY"))) %>%
+  ggplot() +
+  geom_bar(aes(V1))
+
+# need to take chromosome length into account! But looks like maybe bias on chr17, chr19, negative bias on chr9, and no on chrY (this is understandable though)!
+```
+

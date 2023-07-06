@@ -1,0 +1,284 @@
+---
+title: "KEGGPathwayAnalysis"
+output: html_notebook
+---
+
+Using KEGGProfile for KEGG pathway analysis
+
+I have checked for a handful of the binary cancer types, and there seems to be minimal enrichment for KEGG pathways.
+```{r}
+library(KEGGprofile)
+
+```
+
+# Read in gene lists
+```{r}
+
+getwd()
+cancer_type = 'THCA'
+
+# to NCBI IDs
+source('../ensembl_id_to_something_else.R')
+genes <- read.table(paste0('../../mapping_to_genes/gene_lists/genes_', cancer_type, '_1500.csv'), sep = ',', header = TRUE)$ensembl_gene_id
+genes <- unique(genes)
+gene_list_NCBI_ID <- ensembl_to_simpler(as.character(genes), type = "entrezgene_id", remove_duplicates = TRUE)
+# gene_list_NCBI_ID <- ensembl_to_(paste0('../../gene_lists/all_genes_min_count_1__', cancer_type, '_relaxed.csv'), "entrezgene_id") # entrez id is the same as NCBI id
+gene_list_NCBI_ID <- na.omit(gene_list_NCBI_ID) # we lose a bunch here that could not be mapped
+
+```
+
+# Get background set
+```{r}
+# can't just call ensembl_to_ as the background list is too big, so here we split it up into two
+get_background_entrez <- function(cancer_type) {
+  ensembl_file <- paste0('../../mapping_to_genes/background_genes/', cancer_type, '_background_genes.csv')
+  library(data.table)
+  ensembl_ids <- read.table(ensembl_file, header = TRUE)$ensembl_gene_id
+  
+  first_half <- ensembl_ids[1:(length(ensembl_ids)/2)]
+  second_half <- ensembl_ids[((length(ensembl_ids)/2)+1):length(ensembl_ids)]
+  
+  type <- "entrezgene_id"
+  
+  library(biomaRt)
+  ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+  
+  biomart_name_conversion <- getBM(attributes = c("ensembl_gene_id", type),
+                                   filters = 'ensembl_gene_id',
+                                   values = first_half,
+                                   mart = ensembl,
+                                   useCache = FALSE
+                                   )
+  biomart_name_conversion2 <- getBM(attributes = c("ensembl_gene_id", type),
+                                   filters = 'ensembl_gene_id',
+                                   values = second_half,
+                                   mart = ensembl,
+                                   useCache = FALSE
+                                   )
+  
+  biomart_name_conversion_merged <- rbind(biomart_name_conversion, biomart_name_conversion2)
+  
+  # remove repeated ensembl ids(as some seem to map to multiple entrez ids)
+  biomart_name_conversion_merged <- biomart_name_conversion_merged[!duplicated(biomart_name_conversion_merged$ensembl_gene_id), ]
+  
+  background_entrez <- biomart_name_conversion_merged[, type]
+  
+  background_entrez <- background_entrez[background_entrez != ""]
+  background_entrez <- na.omit(background_entrez) # we lose a bunch here that could not be mapped
+  background_entrez <- unique(background_entrez)
+
+  
+  return(background_entrez)
+}
+
+background_NCBI_ID <- get_background_entrez(cancer_type)
+  
+```
+
+
+# Find enriched pathways:
+```{r}
+
+enriched_pathway_result <- find_enriched_pathway(gene_list_NCBI_ID$entrezgene_id, returned_genenumber = 3, download_latest = TRUE, refGene = background_NCBI_ID)
+```
+
+# What pathways are enriched?
+```{r fig.width=5, fig.height=2.8}
+View(enriched_pathway_result$stastic)
+write.table(enriched_pathway_result$stastic, 'kegg_enriched_pathways_multiclass.csv', sep = ',')
+save(enriched_pathway_result, file = 'kegg_enriched_pathways_multiclass.rda')
+
+ggplot(enriched_pathway_result$stastic) + 
+  geom_col(aes(y = -log(pvalueAdj), x = reorder(Pathway_Name, -pvalueAdj))) +
+  xlab('Kegg Pathway') +
+  ylab('-log(adjusted p-value)') +
+  coord_flip()
+ggsave('Enriched_Kegg_pathways.svg', width = 5, height = 2.8)
+```
+
+
+# Visualising them
+This pathway map has the specific gene names from my list (so if the pathway says Wnt, on this map it will say the specific Wnt in my list, eg Wnt16). 
+See result in 'hsa05200_profile_bg.png'
+```{r}
+gene_met <- data.frame(row.names = unique(gene_list_NCBI_ID$entrezgene_id))
+gene_met$random <- 0 # just set to 0 for now
+
+# gene_met$random <- sample.int(100,size=length(gene_list_NCBI_ID),replace=TRUE)/100 # random values for testing the visualisaiton function
+# gene_met$random2 <- sample.int(100,size=length(gene_list_NCBI_ID),replace=TRUE)/100 # random values for testing the visualisaiton function
+
+test <- as.matrix(gene_met)
+row.names(test) <- unique(gene_list_NCBI_ID$entrezgene_id)
+
+plot_pathway(test, pathway_id = '05200', type='bg', bg_col = '#ddccff')
+
+```
+
+# Making data for using KEGG Mapper
+Using this data and KEGG mapper will make the same pathway diagram, but it will contain the gene names that KEGG uses (so will say Wnt, not Wnt16, and will use the gene name synonyms that KEGG uses rather than what I have in my gene list).
+```{r}
+
+pathway_num <- row.names(enriched_pathway_result$stastic[enriched_pathway_result$stastic$Pathway_Name == 'Pathways in cancer', ])[[1]]
+
+kegg_ids_in_pathway <- enriched_pathway_result$detail[[pathway_num]]
+kegg_ids_in_pathway <- paste0('hsa:', kegg_ids_in_pathway)
+pathway_data <- data.frame(ids = kegg_ids_in_pathway, color = '#ddccff')
+
+write.table(pathway_data, 'pathways_in_cancer_kegg_data.csv', sep = '\t', row.names = FALSE, col.names = FALSE, quote = FALSE)
+# now go to https://www.genome.jp/kegg/tool/map_pathway3.html and input the pathway map05200 and the csv file (you need to add a header in the text box too, like in the egs it gives you)
+```
+
+
+# Visualising all pathways as a graph
+```{r}
+# can we visualise the multiclass pathways as a graph?
+load('kegg_enriched_pathways_multiclass.rda') # load so you don't have to run the slow code above (due to getting background set entrez ids)
+nodes <- enriched_pathway_result$stastic$Pathway_Name
+# edges are the genes that overlap between pathways
+pathway_genes <- enriched_pathway_result$detail
+names(pathway_genes) <- nodes
+edges <- data.frame(row.names = nodes)
+for (e in nodes) {
+  for (f in nodes) {
+    print(e)
+    print(f)
+    genes_e <- pathway_genes[[e]]
+    genes_f <- pathway_genes[[f]]
+    # edges[e, f] <- paste0(intersect(genes_e, genes_f)[[1]], collapse = ', ')
+    # for now just the length
+    print(intersect(genes_e, genes_f))
+    if (length(intersect(genes_e, genes_f)) == 0) {
+      edges[e, f] <- 0
+    } else {
+      edges[e, f] <- length(intersect(genes_e, genes_f))
+    }
+  }
+}
+
+node_sizes <- enriched_pathway_result$stastic$Gene_Found
+
+# now make dataframes and save, for visualising in cytoscape
+sif_file <- data.frame()
+edge_weights <- data.frame()
+node_df <- data.frame(nodes = str_replace_all(nodes, ' ', '_'), sizes = node_sizes)
+done <- list()
+for (source in nodes) {
+  for (target in nodes) {
+    if ((edges[source, target] != 0) & (source != target)) {
+      if ((!(paste0(source, target) %in% done)) &  (!(paste0(target, source) %in% done))) { # checking we haven't done it
+        sif_file <- rbind(sif_file, data.frame(source = source, inter = 'intersects', target = target))
+        edge_weights <- rbind(edge_weights, data.frame(source = str_replace_all(source, ' ', '_'), target = str_replace_all(target, ' ', '_'), inter = 'overlap', weight = edges[source, target]))
+        done[length(done) + 1] <- paste0(source, target)
+        
+      }
+    }
+  }
+}
+
+
+write.table(edge_weights, 'kegg_pathway_multiclass_graph.txt', row.names = FALSE, quote = FALSE)
+write.table(node_df, 'kegg_pathway_multiclass_graph_nodes.txt', row.names = FALSE, quote = FALSE)
+```
+
+
+Lets try to ggplot this pathway map
+```{r fig.width = 5, fig.height = 4}
+# want nodes to be bubbles
+# edge_weights
+# node_df
+
+node_positions_x <- c(0, 0, 8, 8.5, 2.5, 9, 8, 3, 4) # fix node positions
+
+node_positions_y <- c(2, 1.25, 1, 0.85, 0.75, 1, 1.75, 1.5, 1.5)
+groups <- c('Metabolism', 'Transport and catabolism', 'Signal transduction', 'Signal transduction', 'Development and regeneration', 'Signal transduction', 'Cellular community - eukaryotes', 'Cancer', 'Cancer') # based off KEGG BRITE pathway maps: https://www.genome.jp/kegg-bin/get_htext
+pathway_plot_df <- data.frame(nodes = node_df$nodes, x = node_positions_x, y = node_positions_y, size = node_df$sizes, group = groups)
+pathway_plot_df_nodes <- pathway_plot_df
+names(node_positions_x) <- node_df$nodes
+names(node_positions_y) <- node_df$nodes
+
+
+edge_weights$source <- as.character(edge_weights$source)
+edge_weights$target <- as.character(edge_weights$target)
+
+edges_df <- data.frame(source = edge_weights$source, target = edge_weights$target, xstart = node_positions_x[edge_weights$source], ystart = node_positions_y[edge_weights$source], xend = node_positions_x[edge_weights$target], yend = node_positions_y[edge_weights$target], weight = edge_weights$weight)
+# edges_df
+edges_df[edges_df$weight < 5, ]$weight = 0 # removing weights < 5
+
+pathway_plot_df_nodes$node_labels <- str_replace_all(pathway_plot_df_nodes$nodes, '_', ' ')
+pathway_plot_df_nodes[pathway_plot_df_nodes$node_labels == 'Signaling pathways regulating pluripotency of stem cells', ]$node_labels <- 'Signaling pathways\n regulating pluripotency\n of stem cells'
+
+library(tidyr)
+more_data <- pathway_plot_df_nodes %>%
+  filter(group %in% names(which(table(pathway_plot_df_nodes$group) > 1))) %>% # only groups with more than 1 member
+  mutate(n = 5) %>%
+  uncount(n) %>%
+  mutate(x_alter = x + rnorm(5, sd = 0.05), y_alter = y+ rnorm(5, sd = 0.05))
+
+label_data <- pathway_plot_df_nodes %>%
+  filter(group %in% names(which(table(pathway_plot_df_nodes$group) > 1))) %>% # only groups with more than 1 member
+  group_by(group) %>%
+  transmute(x_av = mean(x), y_max = max(y), group_name = group) %>%
+  distinct()
+
+library(ggrepel)
+svg('kegg_pathways_plot.svg', width = 5, height = 4)
+ggplot(pathway_plot_df_nodes) +
+  geom_segment(data= edges_df, aes(x = xstart, y = ystart, xend = xend, yend = yend, size = weight), alpha = 0.1) + # plot lines first so they are behind the points
+  stat_ellipse(data = more_data, geom = 'polygon', aes(x = x_alter, y = y_alter, fill = group), alpha = 0.2) + 
+  scale_fill_manual(values=c("#F8766D", "#619CFF")) + 
+  geom_point(aes(x = x, y = y, size = size, colour = group)) +
+  scale_size_area(max_size = 15) +
+  expand_limits(y = 2.2, x = 10.5) + 
+  # geom_point(aes(x = x, y = y, colour = group), size = 25, alpha = 0.3, shape=16) +
+  geom_text_repel(aes(x = x, y = y, label = node_labels), force = 50, point.padding = 0.25, segment.alpha = 0, size = 5) +
+  geom_text(data= label_data, aes(x = x_av, y = y_max + 0.2, label = group_name, color = group_name), size = 6) +
+  theme_void(base_family = 'sans')+
+  theme(legend.position = "none")+
+  theme(text = element_text(size=16))
+dev.off()
+
+
+```
+
+```{r}
+
+edges_df
+
+node_nums <- row.names(pathway_plot_df_nodes)
+names(node_nums) <- pathway_plot_df_nodes$nodes
+
+edges_df_non_zero <- filter(edges_df, weight > 0)
+edges_list <- c(rbind(as.character(edges_df_non_zero$source), as.character(edges_df_non_zero$target)))
+edges_list <- unname(node_nums[edges_list])
+edges_list <- as.integer(edges_list)
+
+# now saving as graphml - igraph has a function for this
+library(igraph)
+
+
+# need to include: node sizes, node groups, node names, edge weights
+g <- make_empty_graph(directed = F) %>%
+  add_vertices(9, color = pathway_plot_df_nodes$group, size = pathway_plot_df_nodes$size, name = pathway_plot_df_nodes$node_labels) %>%
+  add_edges(edges_list, n = 9, width = edges_df_non_zero$weight)
+plot(g)
+write.graph(g, file = 'kegg_pathways_plot.graphml', format = 'graphml')
+
+```
+
+
+Now trying to make the same plot, but now using RGL package to get 3D spheres
+```{r}
+library("rgl")
+data(iris)
+rgl.open() # Open a new RGL device
+rgl.points(iris$Sepal.Length, iris$Sepal.Width, iris$Sepal.Width, color ="lightgray") # Scatter plot
+rgl.postscript("plot.pdf",fmt="pdf")
+# rgl.snapshot(filename = "plot.png")
+
+```
+
+
+
+
+
+

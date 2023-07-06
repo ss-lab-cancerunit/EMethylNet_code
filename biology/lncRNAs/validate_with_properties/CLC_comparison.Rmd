@@ -1,0 +1,839 @@
+---
+title: "CLC comparison"
+output: html_notebook
+---
+
+Comparing the multiclass lncRNAs to a CLC list from this paper: https://www.nature.com/articles/s42003-019-0741-7 (Cancer LncRNA Census reveals evidence for deep functional conservation of long noncoding RNAs in tumorigenesis)
+
+CLC = Cancer LncRNA Census
+
+
+```{r}
+p_val_df <- data.frame()
+```
+
+
+How many of our multiclass lncRNAs are also CLCs?
+```{r}
+# read in the CLC list (got from their website referenced by the paper: https://www.gold-lab.org/clc)
+library(readxl)
+CLCs <- read_excel('152769-3.xlsx', sheet = 2)
+
+# now the multiclass lncRNAs
+# first get background set and find all lncRNAs
+background <- read.table('../../../mapping_to_genes/background_genes/_background_genes.csv', header = TRUE)
+source('../../ensembl_id_to_something_else.R')
+background_types <- ensembl_to_simpler(background$ensembl_gene_id, 'gene_biotype')
+background_lncRNAs <- background_types[background_types$gene_biotype == 'lncRNA', 'ensembl_gene_id']
+# then get the multiclass lncRNAs
+multiclass <- read.table('../../../mapping_to_genes/gene_lists/genes__1500.csv', sep = ',', header = TRUE)
+multi_lncRNAs_ensembl <- background_lncRNAs[(background_lncRNAs %in% unique(multiclass$ensembl_gene_id))]
+
+
+overlap <- intersect(multi_lncRNAs_ensembl, CLCs$`GENCODE ID`)
+
+# View(CLCs[CLCs$`GENCODE ID` %in% overlap, ])
+
+length(overlap)/nrow(CLCs) # proportion of CLCs we find
+
+
+```
+
+So there are 21 overlapping CLCs. Not that many, but the proportion of CLCs in the overlap is ~17% (this is the same as the multiclass overlap proportion in the cancer gene census I think).
+
+
+Is this overlap significant? Let's use a Fisher's test to find out
+```{r}
+
+# Looking at all lncRNAs in background set (so all lncRNAs that could be chosen)
+# structure of contingency:
+#              | CLC | not CLC
+# -----------------------------
+# multi lnc    |
+# not multi lnc|
+
+
+CLC_and_multi <- sum((background_lncRNAs %in% CLCs$`GENCODE ID`) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+CLC_and_not_multi <- sum((background_lncRNAs %in% CLCs$`GENCODE ID`) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+not_CLC_and_multi <- sum(!(background_lncRNAs %in% CLCs$`GENCODE ID`) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+not_CLC_and_not_multi <- sum(!(background_lncRNAs %in% CLCs$`GENCODE ID`) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+contingency <- data.frame(CLC = c(CLC_and_multi, CLC_and_not_multi), not_CLC = c(not_CLC_and_multi, not_CLC_and_not_multi))
+row.names(contingency) <- c('multi', 'not multi')
+View(contingency)
+
+contingency_sums <- contingency
+contingency_sums$sum <- rowSums(contingency)
+contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
+contingency_sums
+
+sum(CLCs$`GENCODE ID` %in% background_lncRNAs) # should be 91
+
+# now Fisher's test:
+fisher_test <- fisher.test(contingency)
+fisher_test
+
+```
+
+So this overlap does appear to be significant. Means the lncRNAs we find are not totally random!
+
+
+There are still many genes not in the CLC list though. The next question is, do they share CLC properties?
+```{r}
+sum(!multi_lncRNAs_ensembl %in% CLCs$`GENCODE ID`) # many multi lncRNAs are not CLCs
+
+```
+
+Firstly, look at cancer-associated germline SNPs. CLC genes are significantly more likely to have their transcription start site (TSS) within 100kb of cancer-associated germline SNPs.
+The paper uses the NHGRI-EBI Catalog of published genome-wide association studies (https://www.ebi.ac.uk/gwas/home), so I have downloaded all associations from this website.
+```{r}
+SNPs <- fread('gwas_catalog_v1.0-associations_e100_r2020-07-14.tsv')
+
+
+cancer_SNPs <- SNPs[grepl('*cancer*', SNPs$`DISEASE/TRAIT`) | grepl('*Cancer*', SNPs$`DISEASE/TRAIT`) | grepl('*Tumor*', SNPs$`DISEASE/TRAIT`) | grepl('*tumor*', SNPs$`DISEASE/TRAIT`) | grepl('*Tumour*', SNPs$`DISEASE/TRAIT`) | grepl('*tumour*', SNPs$`DISEASE/TRAIT`), ]
+
+non_cancer_SNPs <- SNPs[!(grepl('*cancer*', SNPs$`DISEASE/TRAIT`) | grepl('*Cancer*', SNPs$`DISEASE/TRAIT`) | grepl('*Tumor*', SNPs$`DISEASE/TRAIT`) | grepl('*tumor*', SNPs$`DISEASE/TRAIT`) | grepl('*Tumour*', SNPs$`DISEASE/TRAIT`) | grepl('*tumour*', SNPs$`DISEASE/TRAIT`)), ]
+
+# one issue here is the paper said they found  2192 SNPs related to “cancer”, “tumour” and “tumor" (this was in 2016 though). I find 5445 now.
+
+# View(cancer_SNPs)
+
+# now to get the cancer SNP positions
+
+chrom <- cancer_SNPs$CHR_ID
+chrom_pos <- cancer_SNPs$CHR_POS
+chrom_pos <- as.numeric(chrom_pos)
+# remove NAs
+chrom <- chrom[!is.na(chrom_pos)]
+chrom_pos <- chrom_pos[!is.na(chrom_pos)]
+
+chrom_pos <- chrom_pos[!is.na(chrom)]
+chrom <- chrom[!is.na(chrom)]
+
+library(GenomicRanges)
+cancer_SNPs_GRanges <- GRanges(chrom, IRanges(start=chrom_pos,end=chrom_pos),
+              strand="*")
+
+cancer_SNPs_GRanges
+
+# and now the non cancer SNP positions
+chrom <- non_cancer_SNPs$CHR_ID
+chrom_pos <- non_cancer_SNPs$CHR_POS
+chrom_pos <- as.numeric(chrom_pos)
+# remove NAs
+chrom <- chrom[!is.na(chrom_pos)]
+chrom_pos <- chrom_pos[!is.na(chrom_pos)]
+
+chrom_pos <- chrom_pos[!is.na(chrom)]
+chrom <- chrom[!is.na(chrom)]
+
+library(GenomicRanges)
+non_cancer_SNPs_GRanges <- GRanges(chrom, IRanges(start=chrom_pos,end=chrom_pos),
+              strand="*")
+
+non_cancer_SNPs_GRanges
+
+
+
+# now to find the lncRNA TSSs
+multi_lncRNAs_ensembl
+multi_lncRNAs_locations <- ensembl_to_simpler(multi_lncRNAs_ensembl, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site'))
+multi_lncRNAs_GRanges <- GRanges(multi_lncRNAs_locations$chromosome_name, IRanges(start = multi_lncRNAs_locations$transcription_start_site, end = multi_lncRNAs_locations$transcription_start_site), strand = multi_lncRNAs_locations$strand)
+mcols(multi_lncRNAs_GRanges) <- multi_lncRNAs_locations$ensembl_gene_id
+multi_lncRNAs_GRanges
+
+# Do the same for non multiclass lncRNAs:
+non_multi_lncRNAs <- background_lncRNAs[!(background_lncRNAs %in% multi_lncRNAs_ensembl)]
+non_multi_lncRNAs_locations <- ensembl_to_simpler(non_multi_lncRNAs, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site'))
+non_multi_lncRNAs_GRanges <- GRanges(non_multi_lncRNAs_locations$chromosome_name, IRanges(start = non_multi_lncRNAs_locations$transcription_start_site, end = non_multi_lncRNAs_locations$transcription_start_site), strand = non_multi_lncRNAs_locations$strand)
+mcols(non_multi_lncRNAs_GRanges) <- non_multi_lncRNAs_locations$ensembl_gene_id
+non_multi_lncRNAs_GRanges
+
+# now to find 'the closest SNP to each lncRNA TSS'
+library(ChIPpeakAnno)
+closest_SNPs <- annotatePeakInBatch(multi_lncRNAs_GRanges, AnnotationData = cancer_SNPs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_SNPs
+
+# # now let's look at the distances
+# ggplot(as.data.frame(closest_SNPs)) +
+#   geom_histogram(aes(distancetoFeature), bins = 500) + 
+#   geom_vline(aes(xintercept = 100000), color='red') +
+#   geom_vline(aes(xintercept = -100000), color='red')
+
+# now to find the closest SNP to each non lncRNA TSS
+closest_SNPs_non_multi_lncRNAs <- annotatePeakInBatch(non_multi_lncRNAs_GRanges, AnnotationData = cancer_SNPs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_SNPs_non_multi_lncRNAs
+
+# # now let's look at the distances
+# ggplot(as.data.frame(closest_SNPs_non_multi_lncRNAs)) +
+#   geom_histogram(aes(distancetoFeature), bins = 500) + 
+#   geom_vline(aes(xintercept = 100000), color='red') +
+#   geom_vline(aes(xintercept = -100000), color='red')
+
+# We also want the distances to the non cancer SNPs too
+closest_non_cancer_SNPs <- annotatePeakInBatch(multi_lncRNAs_GRanges, AnnotationData = non_cancer_SNPs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_non_cancer_SNPs
+
+closest_non_cancer_SNPs_non_multi_lncRNAs <- annotatePeakInBatch(non_multi_lncRNAs_GRanges, AnnotationData = non_cancer_SNPs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_non_cancer_SNPs_non_multi_lncRNAs
+
+
+```
+
+
+Saving multi lncRNAs GRanges (but with the full gene length info) into a bed file so we can do a conservation test with GAT:
+NOTE: we change the indexing to 0-based start when putting in a bed file (this is the norm for bed files I think).
+```{r}
+multi_lncRNAs_GRanges
+
+multi_lncRNAs_GRanges_full <- GRanges(multi_lncRNAs_locations$chromosome_name, IRanges(start = multi_lncRNAs_locations$start_position, end = multi_lncRNAs_locations$end_position), strand = multi_lncRNAs_locations$strand)
+mcols(multi_lncRNAs_GRanges_full) <- multi_lncRNAs_locations$ensembl_gene_id
+multi_lncRNAs_GRanges_full
+
+# to bed and save
+multi_lncRNAs_GRanges_full_df <- data.frame(seqnames=seqnames(multi_lncRNAs_GRanges_full),
+  starts=start(multi_lncRNAs_GRanges_full)-1, # 0 based indexing now!
+  ends=end(multi_lncRNAs_GRanges_full),
+  names=c(multi_lncRNAs_GRanges_full$X),
+  scores=c(rep(".", length(multi_lncRNAs_GRanges_full))),
+  strands=strand(multi_lncRNAs_GRanges_full))
+multi_lncRNAs_GRanges_full_df
+multi_lncRNAs_GRanges_full_df$seqnames <- paste0('chr', multi_lncRNAs_GRanges_full_df$seqnames)
+write.table(multi_lncRNAs_GRanges_full_df, file="multi_lncRNAs.bed", quote=F, sep="\t", row.names=F, col.names=F)
+
+# we also need a 'workspace', the set of all possible lncRNAs
+background_lncRNAs
+background_lncRNA_locations <- ensembl_to_simpler(background_lncRNAs, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site'))
+background_lncRNA_GRanges <- GRanges(background_lncRNA_locations$chromosome_name, IRanges(start = background_lncRNA_locations$start_position, end = background_lncRNA_locations$end_position), strand = background_lncRNA_locations$strand)
+mcols(background_lncRNA_GRanges) <- background_lncRNA_locations$ensembl_gene_id
+background_lncRNA_GRanges
+
+# to bed and save
+background_lncRNAs_GRanges_df <- data.frame(seqnames=seqnames(background_lncRNA_GRanges),
+  starts=start(background_lncRNA_GRanges)-1, # 0 based indexing now!
+  ends=end(background_lncRNA_GRanges),
+  names=c(background_lncRNA_GRanges$X),
+  scores=c(rep(".", length(background_lncRNA_GRanges))),
+  strands=strand(background_lncRNA_GRanges))
+background_lncRNAs_GRanges_df$seqnames <- paste0('chr', background_lncRNAs_GRanges_df$seqnames)
+background_lncRNAs_GRanges_df
+write.table(background_lncRNAs_GRanges_df, file="background_lncRNAs.bed", quote=F, sep="\t", row.names=F, col.names=F)
+
+```
+
+
+
+Now we can see if there is a difference between the distances of multi lncRNA and non multi lncRNA using Fisher's exact test (it doesn't look like it but we can check anyway)
+```{r}
+
+distance_threshold <- 100000
+
+is_dist_to_TSS_sig <- function(closest_SNPs, closest_SNPs_non_multi_lncRNAs, distance_threshold) {
+  # some are duplicated, as two closest SNPs are the same distance. We can just remove these duplicated ones
+  closest_SNPs <- closest_SNPs[!duplicated(closest_SNPs$X),]
+  
+  multi_lncRNAs_within_100kb <- sum(closest_SNPs$distancetoFeature < distance_threshold)
+  multi_lncRNAs_outside_100kb <- sum(closest_SNPs$distancetoFeature >= distance_threshold)
+  
+  # remove NAs
+  closest_SNPs_non_multi_lncRNAs <- closest_SNPs_non_multi_lncRNAs[!is.na(closest_SNPs_non_multi_lncRNAs$distancetoFeature), ]
+  
+  closest_SNPs_non_multi_lncRNAs <- closest_SNPs_non_multi_lncRNAs[!duplicated(closest_SNPs_non_multi_lncRNAs$X),]
+  
+  non_multi_lncRNAs_within_100kb <- sum(closest_SNPs_non_multi_lncRNAs$distancetoFeature < distance_threshold)
+  non_multi_lncRNAs_outside_100kb <- sum(closest_SNPs_non_multi_lncRNAs$distancetoFeature >= distance_threshold)
+  
+  contingency <- data.frame(multi_lncRNA = c(multi_lncRNAs_within_100kb, multi_lncRNAs_outside_100kb), non_multi_lncRNA = c(non_multi_lncRNAs_within_100kb, non_multi_lncRNAs_outside_100kb))
+  row.names(contingency) <- c('within', 'outside')
+  
+  # View(contingency)
+  
+  contingency_sums <- contingency
+  contingency_sums$sum <- rowSums(contingency)
+  contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
+  contingency_sums
+  
+  print(contingency_sums)
+  
+  # now Fisher's test:
+  fisher_test <- fisher.test(contingency)
+  fisher_test
+  
+  # chi <- chisq.test(contingency)
+  # chi$residuals
+
+  return(fisher_test)
+}
+
+
+for (distance_threshold in c(1000, 10000, 100000)) {
+  fisher_result <- is_dist_to_TSS_sig(closest_SNPs, closest_SNPs_non_multi_lncRNAs, distance_threshold)
+  # So this is not significant
+  p_val_df <- rbind(p_val_df, c('test' = paste('Within', distance_threshold, 'bp of cancer SNPs'), 'p_val' = fisher_result$p.value))
+  
+  if (distance_threshold == 1000) { # if first time in loop
+    colnames(p_val_df) <- c('test', 'p_val')
+    p_val_df$test <- as.character(p_val_df$test)
+    # turning a factor into numeric is a bit fiddly
+    f <- p_val_df[, 'p_val']
+    p_val_df$p_val <- as.numeric(levels(f))[f]
+  }
+  
+  # Now the same thing for non cancer SNPs:
+  fisher_result <- is_dist_to_TSS_sig(closest_non_cancer_SNPs, closest_non_cancer_SNPs_non_multi_lncRNAs, distance_threshold)
+  p_val_df <- rbind(p_val_df, c('test' = paste('Within', distance_threshold, 'bp of non cancer SNPs'), 'p_val' = fisher_result$p.value))
+}
+
+```
+This was found to be not significant, for both cancer SNPs and non cancer SNPs and for all three distance thresholds (1000, 10000, 100000).
+
+
+They also found that CLCs are near CGC TSSs (within 1kb)
+```{r}
+# read in the cosmic cancer gene census
+CGCs <- fread('../../cosmic/cosmic_cancer_gene_census_all13Nov2020.csv')
+
+library(stringr)
+CGCs_ensembl <- str_extract(CGCs$Synonyms, 'ENSG[0-9]*')
+CGCs_ensembl <- CGCs_ensembl[!is.na(CGCs_ensembl)]
+
+CGCs_locations <- ensembl_to_simpler(CGCs_ensembl, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site'))
+CGCs_GRanges <- GRanges(CGCs_locations$chromosome_name, IRanges(start = CGCs_locations$transcription_start_site, end = CGCs_locations$transcription_start_site), strand = CGCs_locations$strand)
+mcols(CGCs_GRanges) <- CGCs_locations$ensembl_gene_id
+CGCs_GRanges
+
+closest_CGCs <- annotatePeakInBatch(multi_lncRNAs_GRanges, AnnotationData = CGCs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_CGCs
+
+closest_CGCs_non_multi <- annotatePeakInBatch(non_multi_lncRNAs_GRanges, AnnotationData = CGCs_GRanges, output = 'nearestLocation', ignore.strand = TRUE)
+closest_CGCs_non_multi
+
+
+fisher_result <- is_dist_to_TSS_sig(closest_CGCs, closest_CGCs_non_multi, 1000) # no association
+p_val_df <- rbind(p_val_df, c('test' = paste('Within 1000 bp of CGCs'), 'p_val' = fisher_result$p.value))
+```
+This is not significant either.
+
+
+They also found that CLCs are lncRNAs that are epigenetically-silenced in tumours, from the list from this paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4777353/ (Comprehensive Genomic Characterization of Long Non-Coding RNAs across Human Cancers)
+```{r}
+CAESLGs <- read_excel('NIHMS726531-supplement-6.xlsx', sheet = 2, skip = 2)
+
+
+# genes <- str_extract(gencode_24$V9, 'gene_id ENSG[0-9]*')
+# genes <- str_remove(genes, 'gene_id ')
+
+CAESLGs <- unique(unname(unlist(as.vector(CAESLGs))))
+
+# problem: we do not get the expected number of CAESLGs - the paper mentions only 203.
+
+# sum(CAESLGs %in% genes)
+
+sum(CAESLGs %in% multi_lncRNAs_ensembl)
+mean(CAESLGs %in% multi_lncRNAs_ensembl)
+
+background_lncRNAs
+
+
+
+CAESLG_and_multi <- sum((background_lncRNAs %in% CAESLGs) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+CAESLG_and_not_multi <- sum((background_lncRNAs %in% CAESLGs) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_CAESLG_and_multi <- sum(!(background_lncRNAs %in% CAESLGs) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_CAESLG_and_not_multi <- sum(!(background_lncRNAs %in% CAESLGs) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+
+contingency <- data.frame(CAESLG = c(CAESLG_and_multi, CAESLG_and_not_multi), not_CAESLG = c(not_CAESLG_and_multi, not_CAESLG_and_not_multi))
+row.names(contingency) <- c('multi', 'not multi')
+contingency
+
+contingency_sums <- contingency
+contingency_sums$sum <- rowSums(contingency)
+contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
+contingency_sums
+
+sum(CAESLGs %in% background_lncRNAs) # 275
+
+# now Fisher's test:
+fisher_test <- fisher.test(contingency)
+fisher_test
+p_val_df <- rbind(p_val_df, c('test' = paste('Epigenetically-silenced in tumours'), 'p_val' = fisher_test$p.value))
+
+chi <- chisq.test(contingency)
+chi$residuals
+
+```
+So we have more CAESLGs than expected. These are 'cancer-associated epigenetically silenced lncRNA genes' found by the paper mentioned above. This is totally expected, as we found these genes using methylation data! (doing this test might actually be invalid, as they also used TCGA data)
+
+
+Next, they found the lncRNAs are differentially expressed. They got the list from the same paper.
+```{r}
+diff_lncRNAs <- read_excel('NIHMS726531-supplement-4.xlsx', sheet = 6, skip = 2)
+diff_lncRNAs <- diff_lncRNAs[, str_detect(colnames(diff_lncRNAs), 'Ensembl')]
+
+diff_lncRNAs <- unique(unname(unlist(as.vector(diff_lncRNAs))))
+# in the paper they find 3533, which is close to the number we find here
+
+sum(diff_lncRNAs %in% multi_lncRNAs_ensembl)
+mean(diff_lncRNAs %in% multi_lncRNAs_ensembl)
+
+
+diff_and_multi <- sum((background_lncRNAs %in% diff_lncRNAs) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+diff_and_not_multi <- sum((background_lncRNAs %in% diff_lncRNAs) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_diff_and_multi <- sum(!(background_lncRNAs %in% diff_lncRNAs) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_diff_and_not_multi <- sum(!(background_lncRNAs %in% diff_lncRNAs) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+
+contingency <- data.frame(diff = c(diff_and_multi, diff_and_not_multi), not_diff = c(not_diff_and_multi, not_diff_and_not_multi))
+row.names(contingency) <- c('multi', 'not multi')
+contingency
+
+contingency_sums <- contingency
+contingency_sums$sum <- rowSums(contingency)
+contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
+contingency_sums
+
+sum(diff_lncRNAs %in% background_lncRNAs) # 2721
+
+# now Fisher's test:
+fisher_test <- fisher.test(contingency)
+fisher_test
+p_val_df <- rbind(p_val_df, c('test' = paste('Differentially expressed in tumours'), 'p_val' = fisher_test$p.value))
+
+
+chi <- chisq.test(contingency)
+chi$residuals
+
+
+```
+
+So the lncRNA list does contain more differentially expressed lncRNAs than expected. 
+We can't expect them all to be differentially expressed (about 1/3 are) as they might:
+- be different in some samples and not others, 
+- have only small but consistent differences, 
+- and they also might not change at all and our relaxed mapping just mapped to them (or their methylation has little effects on the expression?).
+
+
+Gene length. They found CLCs to be significantly longer in length than non CLCs.
+```{r fig.width = 4, fig.height = 3}
+multi_lncRNA_lengths <- abs(multi_lncRNAs_locations$start_position - multi_lncRNAs_locations$end_position)
+
+ggplot(data.frame(multi_lncRNA_lengths)) +
+  geom_histogram(aes(multi_lncRNA_lengths), bins = 100)
+
+
+
+non_multi_lncRNA_lengths <- abs(non_multi_lncRNAs_locations$start_position - non_multi_lncRNAs_locations$end_position)
+
+ggplot(data.frame(non_multi_lncRNA_lengths)) +
+  geom_histogram(aes(non_multi_lncRNA_lengths), bins = 100)
+
+
+
+# ggplot(data.frame(multi_lncRNA_lengths)) +
+#   geom_density(aes(multi_lncRNA_lengths), bins = 100)
+# 
+# ggplot(data.frame(non_multi_lncRNA_lengths)) +
+#   geom_density(aes(non_multi_lncRNA_lengths), bins = 100)
+# 
+
+
+x = multi_lncRNA_lengths
+y = non_multi_lncRNA_lengths
+
+
+
+lengths <- rbind(data.frame(length = x, multi = TRUE), data.frame(length = y, multi= FALSE))
+
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = length))
+
+lengths_sampled <- rbind(data.frame(length = x, multi = TRUE), data.frame(length = sample(y, length(x)), multi= FALSE))
+
+ggplot(lengths_sampled) +
+  geom_boxplot(aes(x = multi, y = length))
+
+ggplot(lengths_sampled) +
+  geom_boxplot(aes(x = multi, y = length)) + 
+  coord_cartesian(ylim = c(0, 100000))
+
+# res <- wilcox.test(x, y)
+# res
+# p_val_df <- rbind(p_val_df, c('test' = paste('Gene length'), 'p_val' = res$p.value))
+
+
+# even with the same number in each group, the variance looks very different - larger for multi == TRUE
+# therefore a wilcoxon test or a t test is not appropriate, as they assume equal variance. So we could do a welch's t test. We have large n, so no need for a normal distribution, and it doesn't require equal variances.
+
+t.test(x, y) # turns out r computes the welch's t test automatically
+
+# however, it would be cleaner to log the expression and do the mann whitney wilcoxon test throughout (which is more robust to outliers, which we have many of)
+# once logged, we have the same vairance:
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = log(length)))
+
+res <- wilcox.test(log(x), log(y)) # again, significant
+res
+p_val_df <- rbind(p_val_df, c('test' = paste('Gene length'), 'p_val' = res$p.value))
+
+
+
+# plotting gene length box plots
+if (res$p.value < 0.001) {
+  star_label = '***'
+}
+
+svg('gene_length_boxplot.svg', width = 4, height = 3)
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = log(length), fill = multi)) +
+  scale_fill_manual(values=c("white", "grey35"), name = "", labels = c("Non multiclass lncRNA", "Multiclass lncRNA")) + 
+  theme_classic() + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  ylab('log(Gene length)') +
+  geom_text(aes(x = 1.5, y = max(log(length)) + 1, label = star_label)) + # doing star above to indicate significance
+  geom_segment(aes(x = 1, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.8), size = 0.05) +
+  geom_segment(aes(x = 1, xend = 1, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05) + 
+  geom_segment(aes(x = 2, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05)
+dev.off()
+  # ggsave('gene_length_boxplot.svg', width = 4, height = 3)
+  
+
+
+# finding R's default grey colour:
+# p <- ggplot(lengths) +
+#   geom_col(aes(y = length, x = multi))
+# ggplot_build(p)$data %>% head() # got from https://stackoverflow.com/a/50823599
+
+```
+
+This seems to suggest that the multi lncRNAs seem to be slightly longer than the non multi lncRNAs, like the CLCs!
+
+Exon length. 
+Transcript length in ensembl seems to be the length of exons for each transcript.
+```{r fig.width=4, fig.height=3}
+multi_lncRNAs_transcripts <- ensembl_to_simpler(multi_lncRNAs_ensembl, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site', 'transcript_length'), remove_duplicates = FALSE)
+
+non_multi_lncRNAs_transcripts <- ensembl_to_simpler(non_multi_lncRNAs, c('chromosome_name', 'start_position', 'end_position', 'strand', 'transcription_start_site', 'transcript_length'), remove_duplicates = FALSE)
+
+# the paper actually takes the union of all exons and gets the length of them. I can't find that info atm so I instead take the longest transcript as a vaguely approximate substitute
+
+multi_lncRNAs_transcripts <- multi_lncRNAs_transcripts %>%
+  group_by(ensembl_gene_id) %>%
+  summarise(max(transcript_length)) # get max transcipt for that gene
+non_multi_lncRNAs_transcripts <- non_multi_lncRNAs_transcripts %>%
+  group_by(ensembl_gene_id) %>%
+  summarise(max(transcript_length)) # get max transcipt for that gene
+
+multi_lncRNAs_transcripts
+non_multi_lncRNAs_transcripts
+
+x = multi_lncRNAs_transcripts$`max(transcript_length)`
+y = non_multi_lncRNAs_transcripts$`max(transcript_length)`
+
+
+lengths <- rbind(data.frame(length = x, multi = TRUE), data.frame(length = y, multi= FALSE))
+
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = length))
+
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = length)) + 
+  coord_cartesian(ylim = c(0, 5000))
+
+# here the variances look pretty equal, so a mann whitney wilcoxon test works
+# however for consistency, we will log the values here too (the variances are still equal)
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = log(length)))
+
+res <- wilcox.test(log(x), log(y))
+res
+p_val_df <- rbind(p_val_df, c('test' = paste('Transcript length'), 'p_val' = res$p.value))
+
+# we can check with a welch's t test, incase they aren't equal enough for this test
+t.test(x, y) # and this is also significant
+
+
+# plotting transcipt length box plots
+if (res$p.value < 0.001) {
+  star_label = '***'
+}
+svg('transcript_length_boxplot.svg', width = 4, height = 3)
+ggplot(lengths) +
+  geom_boxplot(aes(x = multi, y = log(length), fill = multi)) + # here removing outlier points as they distract from the plot
+  # coord_cartesian(ylim = c(4, 10)) + 
+  scale_fill_manual(values=c("white", "grey35"), name = "", labels = c("Non multiclass lncRNA", "Multiclass lncRNA")) + 
+  theme_classic() + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  ylab('log(Transcript length)') + 
+  geom_text(aes(x = 1.5, y = max(log(length)) + 1, label = star_label)) + # doing star above to indicate significance
+  geom_segment(aes(x = 1, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.8), size = 0.05) +
+  geom_segment(aes(x = 1, xend = 1, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05) + 
+  geom_segment(aes(x = 2, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05)
+dev.off()
+# ggsave('transcript_length_boxplot.svg', width = 4, height = 3)
+
+
+```
+
+This also seems to suggest that the multi lncRNAs seem to have slightly longer max transcripts than the non multi lncRNAs. Should probably do the exact same way as the paper, where we take the union of the exons.
+
+
+Now looking at expression - the paper finds that CLCs have a 'consistently higher steady-state expression levels compared with non-CLC genes across PCAWG tumours'. So we will test this on TCGA data as this is available to us.
+```{r fig.width=4,fig.height=3}
+# load in expression data (normalised with edgeR's TMM and averaged across samples)
+BRCA_exp <- read.table('averaged_TMM_BRCA.csv')
+BRCA_exp
+
+test_expression <- function(exp, cancer_type) {
+  print(mean(is.na(exp[multi_lncRNAs_ensembl, ]))) # some lncRNAs are not in the expression data
+  print(mean(!(multi_lncRNAs_ensembl %in% row.names(exp))))
+  
+  print(mean(!is.na(exp[multi_lncRNAs_ensembl, ])))
+  print(mean(!is.na(exp[non_multi_lncRNAs, ]))) # a few more NAs here (but not too much more)
+  
+  x <- exp[multi_lncRNAs_ensembl, ]
+  x <- x[!is.na(x)]
+  
+  y <- exp[non_multi_lncRNAs, ]
+  y <- y[!is.na(y)]
+  
+  # now we have two lists of expression data, we can do a wilcoxon test
+  # logging to ensure equal variances, required for the mann whitney wilcoxon test
+  res <- wilcox.test(log(x), log(y))
+  print(res)
+  p_val_df <<- rbind(p_val_df, c('test' = paste(cancer_type, 'expression'), 'p_val' = res$p.value))
+  
+  
+  # plotting boxplot
+  if (res$p.value < 0.001) {
+    star_label = '***'
+  } else {
+    star_label = 'NA'
+  }
+  lengths <- rbind(data.frame(length = x, multi = TRUE), data.frame(length = y, multi= FALSE))
+  
+  svg(paste0(cancer_type, 'expression_boxplot.svg'), width = 4, height = 3)
+  ggplot(lengths) +
+    geom_boxplot(aes(x = multi, y = log(length)))
+  
+  if (cancer_type == 'BRCA') label = 'breast cancer'
+  if (cancer_type == 'THCA') label = 'thyroid cancer'
+  if (cancer_type == 'HNSC') label = 'head and neck cancer'
+  if (cancer_type == 'BRCA normal') label = 'normal breast'
+  # plotting expression box plots
+  print(ggplot(lengths) +
+    geom_boxplot(aes(x = multi, y = log(length), fill = multi)) +
+    scale_fill_manual(values=c("white", "grey35"), name = "", labels = c("Non multiclass lncRNA", "Multiclass lncRNA")) + 
+    theme_classic() + 
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+    ylab(paste0('log(', label, ' expression)')) +
+    geom_text(aes(x = 1.5, y = max(log(length)) + 1, label = star_label)) + # doing star above to indicate significance
+    geom_segment(aes(x = 1, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.8), size = 0.05) +
+    geom_segment(aes(x = 1, xend = 1, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05) + 
+    geom_segment(aes(x = 2, xend = 2, y = max(log(length)) + 0.8, yend = max(log(length)) + 0.4), size = 0.05))
+    # ggsave(paste0(cancer_type, 'expression_boxplot.svg'), width = 4, height = 3)
+    dev.off()
+
+}
+
+
+test_expression(BRCA_exp, 'BRCA')
+
+HNSC_exp <- read.table('averaged_TMM_HNSC.csv')
+HNSC_exp
+test_expression(HNSC_exp, 'HNSC')
+
+THCA_exp <- read.table('averaged_TMM_THCA.csv')
+THCA_exp
+test_expression(THCA_exp, 'THCA')
+
+normal_BRCA_exp <- read.table('averaged_TMM_normal BRCA.csv')
+normal_BRCA_exp
+test_expression(normal_BRCA_exp, 'BRCA normal')
+
+
+```
+So for all three cancer types (I chose the three cancer types with the most number of samples), and normal BRCAs, the multi lncRNA expression is larger than the non multi lncRNAs.
+
+
+Now looking at conservation. Read in Phast conservation scores, get scores for both multi lncRNAs and non multi lncRNAs, and do a wilcoxon test to see if there is any difference.
+Warning: takes a longgg time to run!
+```{r fig.width=4, fig.height=3}
+
+library(data.table)
+cons_scores <- fread('conservation/intersected_hg38_background_lncRNAs.bed') # intersection of background lncRNAs and hg38.phaseCons100way.bed (has conservation scores)
+cons_scores$V4 <- NULL
+cons_scores
+cons_GRanges <- GRanges(
+  seqnames = cons_scores$V1, 
+  ranges = IRanges(start = cons_scores$V2+1, end = cons_scores$V3), # add 1 to the start to undo the 0 based format
+  mcols = cons_scores$V5
+  )
+
+cons_GRanges
+
+# now to find which bp overlap with multi lncRNAs
+multi_lncRNAs_GRanges_full
+
+seqlevelsStyle(multi_lncRNAs_GRanges_full) <- seqlevelsStyle(cons_GRanges)
+cons_overlaps <- findOverlaps(cons_GRanges, multi_lncRNAs_GRanges_full)
+
+mean(sort(unique(subjectHits(cons_overlaps))) == 1:1000) # should be 1, as then we overlap with every lncRNA
+
+cons_overlaps
+
+multi_lncRNAs_GRanges_full[subjectHits(cons_overlaps)]
+cons_GRanges[queryHits(cons_overlaps)]
+
+# put samples together for the overlapping probes
+df1 <- as.data.frame(cons_GRanges[queryHits(cons_overlaps), ])
+df2 <- as.data.frame(multi_lncRNAs_GRanges_full[subjectHits(cons_overlaps), ])
+
+library(dplyr)
+combined <- bind_cols(df1, df2)
+
+combined
+
+# now get average conservation level for each gene
+average_cons_score_multi <- combined %>%
+  group_by(X) %>%
+  summarise(mean(mcols))
+
+
+# now do the same for non multi lncRNAs
+
+non_multi_lncRNAs_GRanges_full <- GRanges(non_multi_lncRNAs_locations$chromosome_name, IRanges(start = non_multi_lncRNAs_locations$start_position, end = non_multi_lncRNAs_locations$end_position), strand = non_multi_lncRNAs_locations$strand)
+mcols(non_multi_lncRNAs_GRanges_full) <- non_multi_lncRNAs_locations$ensembl_gene_id
+non_multi_lncRNAs_GRanges_full
+seqlevelsStyle(non_multi_lncRNAs_GRanges_full) <- seqlevelsStyle(cons_GRanges)
+
+
+cons_overlaps_non_multi <- findOverlaps(cons_GRanges, non_multi_lncRNAs_GRanges_full)
+
+mean(sort(unique(subjectHits(cons_overlaps_non_multi))) == 1:10372) # should be 1, as then we overlap with every lncRNA
+length(unique(subjectHits(cons_overlaps_non_multi))) # we are actually only missing 1, which is great
+
+cons_overlaps_non_multi
+
+non_multi_lncRNAs_GRanges_full[subjectHits(cons_overlaps_non_multi)]
+cons_GRanges[queryHits(cons_overlaps_non_multi)]
+
+
+
+# put samples together for the overlapping probes
+df1 <- as.data.frame(cons_GRanges[queryHits(cons_overlaps_non_multi), ])
+df2 <- as.data.frame(non_multi_lncRNAs_GRanges_full[subjectHits(cons_overlaps_non_multi), ])
+
+combined_non_multi <- bind_cols(df1, df2)
+
+combined_non_multi
+
+# now get average conservation level for each gene
+average_cons_score_non_multi <- combined_non_multi %>%
+  group_by(X) %>%
+  summarise(mean(mcols))
+
+average_cons_score_non_multi
+
+
+
+# now looking at the differences between the averages of multi lncRNAs and non multi lncRNAs
+library(ggplot2)
+ggplot(average_cons_score_multi) + 
+  geom_histogram(aes(`mean(mcols)`), bins = 100)
+
+ggplot(average_cons_score_non_multi) + 
+  geom_histogram(aes(`mean(mcols)`), bins = 100)
+
+
+x <- average_cons_score_multi$`mean(mcols)`
+y <- average_cons_score_non_multi$`mean(mcols)`
+
+mean(is.na(y)) # check no NAs
+
+
+
+
+# plotting boxplot
+gene_cons_scores <- rbind(data.frame(cons = x, multi = TRUE), data.frame(cons = y, multi= FALSE))
+gene_cons_scores
+ggplot(gene_cons_scores) +
+  geom_boxplot(aes(x = multi, y = cons))
+
+ggplot(gene_cons_scores) +
+  geom_boxplot(aes(x = multi, y = cons)) +
+  coord_cartesian(ylim = c(0, 0.25))
+# same variances so we can use the mann whitney wilcoxon test
+
+res <- wilcox.test(x, y)
+print(res)
+p_val_df <- rbind(p_val_df, c('test' = 'Genes are more conserved', 'p_val' = res$p.value))
+
+
+
+if (res$p.value < 0.001) {
+  star_label = '***'
+} else {
+  star_label = 'NA'
+}
+svg('conservation_boxplot.svg', width = 4, height = 3)
+ggplot(gene_cons_scores) +
+  geom_boxplot(aes(x = multi, y = cons, fill = multi)) +
+  # coord_cartesian(ylim = c(0, 0.3)) +
+  scale_fill_manual(values=c("white", "grey35"), name = "", labels = c("Non multiclass lncRNA", "Multiclass lncRNA")) + 
+  theme_classic() + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+  ylab('conservation score') + 
+  geom_text(aes(x = 1.5, y = max(cons) + 0.15, label = star_label)) + # doing star above to indicate significance
+  geom_segment(aes(x = 1, xend = 2, y = max(cons) + 0.1, yend = max(cons) + 0.1), size = 0.05) +
+  geom_segment(aes(x = 1, xend = 1, y = max(cons) + 0.1, yend = max(cons) + 0.05), size = 0.05) + 
+  geom_segment(aes(x = 2, xend = 2, y = max(cons) + 0.1, yend = max(cons) + 0.05), size = 0.05) +
+  scale_y_continuous(name="conservation score", limits=c(0, 1.15), breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1))
+  # ggsave('conservation_boxplot.svg', width = 4, height = 3)
+dev.off()
+
+
+```
+So it looks like it is significant! Even for whole genes, not just promoters/exons.
+
+
+Freqpoly of these conservation scores
+```{r}
+# firstly, plotting a freqpoly of the average conservation for each gene
+ggplot(average_cons_score_multi) +
+  geom_freqpoly(aes(`mean(mcols)`), bins = 100)
+
+ggplot(average_cons_score_non_multi) +
+  geom_freqpoly(aes(`mean(mcols)`), bins = 100)
+
+
+ggplot(rbind(data.frame(cons = average_cons_score_multi$`mean(mcols)`, multi = TRUE), data.frame(cons = average_cons_score_non_multi$`mean(mcols)`, multi= FALSE))) +
+  geom_density(aes(cons, colour = multi), size = 1)
+
+
+# now to plot when not averaged for each gene, just plot all the conservation values that overlap the multi/non-multi genes
+# very very large, so randomly sample from the non multis to get a managable size
+# going off estimated plotting times, will do 5 mill each for multi and non multi
+to_plot <- rbind(data.frame(cons = sample(combined$mcols, 2500000), multi = TRUE), data.frame(cons = sample(combined_non_multi$mcols, 2500000), multi= FALSE))
+
+ggplot(to_plot) +
+  geom_density(aes(cons, colour = multi), size = 0.3) +
+  xlim(c(0, 0.1))
+
+ggplot(to_plot) + 
+  geom_boxplot(aes(x = multi, y = cons)) +
+  ylim(c(0, 0.1))
+# this shows that when taking just the regions overlapping multi and non-multi genes, the multi regions are slightly less conserved. But when averaging by gene, the multi regions are more conserved.
+
+```
+
+
+
+
+Save results:
+```{r}
+write.table(p_val_df, 'p_val_results.csv', row.names = FALSE)
+```
+

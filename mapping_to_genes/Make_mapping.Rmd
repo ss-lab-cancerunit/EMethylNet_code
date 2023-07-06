@@ -1,0 +1,150 @@
+---
+title: "Make mapping"
+output: html_notebook
+---
+
+# Get all possible probe locations
+```{r}
+
+load('/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/BRCAmethylation.rda')
+
+library(GenomicRanges)
+library(ChIPpeakAnno)
+library(SummarizedExperiment)
+
+probe_locations <- granges(rowRanges(data))
+
+
+get_biomart_data <- function() {
+  library(biomaRt)
+  ensembl = useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+  
+  chromosomes = c(as.character(1:22), "X", "Y") # only get these chromosomes
+  attributes = c("ensembl_gene_id", "external_gene_name", "chromosome_name", "start_position", "end_position", "strand", "gene_biotype", "hgnc_symbol")
+  
+  biomart_data <- getBM(attributes = attributes, filters = "chromosome_name", values = chromosomes, mart = ensembl) # get all types, on normal chromosomes
+  
+  return(biomart_data)
+}
+
+biomart_data <- get_biomart_data()
+
+
+# turning to granges:
+bed_like <- dplyr::select(biomart_data, chromosome_name, start_position, end_position, strand, ensembl_gene_id, external_gene_name)
+colnames(bed_like) <- c("seqnames", "start", "end", "strand", "ensembl_gene_id", "gene_name")
+geneLocations <- toGRanges(bed_like)
+
+seqlevelsStyle(geneLocations) <- seqlevelsStyle(probe_locations) # changing chromosome name syntax to the island one so they are using the same naming syntax
+
+names(geneLocations) <- paste('Gene', names(geneLocations), sep='_')
+
+
+```
+
+
+# Get relevant genes:
+```{r}
+
+# from the docs:
+# To obtain peaks from 5kb upstream to 3kb downstream of genes/Exons,set output="overlapping", bindingType = "fullRange" and bindingRegion =c(-5000, 3000)
+# and I need peaks from 1500 upstream to 0 downstream of genes
+# so I think this is right:
+
+range_to_allow <- 1500
+distances <- annotatePeakInBatch(probe_locations, AnnotationData = geneLocations, output = "overlapping", bindingType = "fullRange", bindingRegion = c(-range_to_allow, 1), select = "all")
+distances
+```
+
+
+# Add CGI info
+Now the distances granges needs to have island information added to it. Each CpG might be in/near an (one) island, so need to add columns 'CGI coordinate', and 'feature_type'
+```{r}
+# get CGI locations
+bed <- read.table("hg38_CGI_locations_from_ucsc.bed", header = FALSE, sep="\t", col.names = c("seqnames", "start", "end", "name"))
+bed$name <- paste(bed$name, rownames(bed), sep='.') # making names unique by appending the row number
+island_locations <- toGRanges(bed, format = "BED", header = FALSE)
+
+seqlevelsStyle(island_locations) <- seqlevelsStyle(distances) # just to make sure same naming conventions
+print(island_locations)
+
+# renaming colnames so we don't get confused about col names on the next run of annotatePeakInBatch
+# things with a gene_ prefix are info about the genes we found for each CpG
+colnames(mcols(distances)) <- c("probe", "gene_feature", "gene_feature.ranges", "gene_feature.strand", "gene_distance", "gene_insideFeature", "gene_distanceToSite", "ensembl_gene_id", "gene_name")
+
+# peaks are CpG locations (with a load of metadata - the genes)
+# annotation is the CGI locations - we want to annotate the CpGs with CGIs
+distances_with_island_info <- annotatePeakInBatch(distances, AnnotationData = island_locations, output = "both", ignore.strand = TRUE, FeatureLocForDistance = "middle") # CGIs do not have strands, so we ignore strand info
+
+distances_with_island_info
+library(tidyverse)
+counts <- add_tally(group_by(as.tibble(distances_with_island_info), peak))$n # how many CGIs has each probe been matched to?
+
+# where more than one CGI was found, but it doesn't overlap: (we just want to keep the overlapping ones)
+to_remove <- distances_with_island_info[counts > 1 & distances_with_island_info$fromOverlappingOrNearest != "Overlapping"]
+names_to_keep <- setdiff(names(distances_with_island_info), names(to_remove))
+
+distances_with_island_info <- distances_with_island_info[names_to_keep]
+
+distances_with_island_info
+```
+
+
+# Adding feature type - Island/Shore/Shelf/.
+Now we have the nearest CGI coord, we can add information about what we classify the location of the CpG to be.
+It seems standard to define:
+- N_Shore = up to 2kb upstream from CGI
+- S_Shore = up to 2kb downstream from CGI
+- N_Shelf = 2kb-4kb upstream from CGI
+- S_Shelf = 2kb-4kb downstream from CGI
+
+|__N_Shelf__|__N_Shore__|__Island__|__S_Shore__|__S_Shelf__|
+
+We are taking upstream/downstream to mean on the positive strand, as this does not really matter (CGIs don't have a strand (I think!))
+
+```{r}
+distances_with_island_info$feature_type = "." # anything that doesn't fit into a category is just a "."
+
+# Islands: island_start_position <= CpG <= island_end_position
+distances_with_island_info[distances_with_island_info$start_position <= start(ranges(distances_with_island_info)) & start(ranges(distances_with_island_info)) <= distances_with_island_info$end_position]$feature_type <- "Island"
+
+# N_Shores: 0 < island_start_position - CpG <= 2000
+n_dists <- distances_with_island_info$start_position - start(ranges(distances_with_island_info))
+distances_with_island_info[n_dists > 0 & n_dists <= 2000]$feature_type <- "N_Shore"
+
+# S_Shores: 0 < CpG - island_end_position <= 2000
+s_dists <- start(ranges(distances_with_island_info)) - distances_with_island_info$end_position
+distances_with_island_info[s_dists > 0 & s_dists <= 2000]$feature_type <- "S_Shore"
+
+# N_Shelf:
+distances_with_island_info[n_dists > 2000 & n_dists <= 4000]$feature_type <- "N_Shelf"
+
+# S_Shelf:
+distances_with_island_info[s_dists > 2000 & s_dists <= 4000]$feature_type <- "S_Shelf"
+
+
+distances_with_island_info
+
+# Looking at the frequency:
+types <- distances_with_island_info$feature_type
+ggplot() +
+  geom_bar(aes(types))
+
+```
+
+# Stripping down the mapping file so it's more understandable
+The metacolumns we are interested in are: probe, gene_feature.ranges, gene_feature.strand, ensembl_gene_id, start_position, end_position, feature_type
+```{r}
+my_mapping <- distances_with_island_info[, c("probe", "gene_feature.ranges", "gene_feature.strand", "ensembl_gene_id", "gene_name", "start_position", "end_position", "feature_type")]
+
+my_mapping
+
+save(my_mapping, file = paste("my_mapping_", range_to_allow, ".rda", sep = ''))
+
+write.table(as.tibble(my_mapping), file = paste("my_mapping_", range_to_allow, ".csv", sep = ''), quote = F, sep = ",", row.names = F)
+
+```
+
+
+
+

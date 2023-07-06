@@ -1,0 +1,177 @@
+
+
+
+```{r}
+pws_to_get <- c('hsa01100', 'hsa04144', 'hsa04310', 'hsa04350', 'hsa04360', 'hsa04390', 'hsa04550', 'hsa05200', 'hsa05224')
+```
+
+
+```{r}
+
+library(KEGGgraph)
+
+
+pId <- "hsa04360"
+
+get_pathway <- function(pId) {
+  tmp <- tempfile()
+  retrieveKGML(pId, organism="hsa", destfile=tmp, method="wget", quiet=TRUE)
+  mapkG <- parseKGML2Graph(tmp,expandGenes=TRUE)
+  return(mapkG)
+}
+
+mapkG <- get_pathway(pId)
+
+
+
+edges(mapkG)
+
+
+
+nodes(mapkG)
+
+edges(mapkG)
+
+plot(mapkG)
+
+```
+
+
+# Converting KEGG gene ids into ensembl gene ids
+```{r}
+
+length(nodes(mapkG))
+
+library(data.table)
+bg_genes <- fread('../../../mapping_to_genes/background_genes/_background_genes.csv')
+ 
+library(tidyverse)
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl") #, mirror = "useast") # this mirror change worked when I was having server/connection issues 
+
+# given a list of ensembl ids that map to the same entrez id, chooses the best ensembl id
+choose_right_ensembl <- function(ensembl_ids) {
+  is_in <- ensembl_ids %in% bg_genes$ensembl_gene_id
+  right_ensembls <- ensembl_ids[is_in] # all of these ensembls are now OK as they are in our 
+  if (length(right_ensembls) > 0) {
+    return(right_ensembls[[1]])
+  } else {
+    return(ensembl_ids[[1]]) # if none are right, just return the first ensembl id (doesn't matter which one is returned)
+  }
+}
+  
+  
+kegg_ids_to_ensembl <- function(mapkG) {
+  entrez_node_ids <- translateKEGGID2GeneID(nodes(mapkG), organism="hsa")
+
+
+  # now turn entrez into ensembl ID and gene symbol
+  
+  biomart_name_conversion <- getBM(attributes = c('entrezgene_id', 'ensembl_gene_id', 'external_gene_name'),
+                                     filters = 'entrezgene_id',
+                                     values = entrez_node_ids,
+                                     mart = ensembl,
+                                     useCache = FALSE # it broke without this
+    )
+  
+
+  
+  
+  # find genes with multiple ensembl ids and remove unwanted ensembl ids
+  genes_with_dup_ids <- biomart_name_conversion$entrezgene_id[duplicated(biomart_name_conversion$entrezgene_id)]
+  ensembls_to_remove_list <- c()
+  for (i in 1:length(genes_with_dup_ids)) {
+    duped_entrez <- genes_with_dup_ids[i]
+    ensembl_ids <- biomart_name_conversion$ensembl_gene_id[biomart_name_conversion$entrezgene_id == duped_entrez]
+    right_ensembl_id <- choose_right_ensembl(ensembl_ids)
+    ensembls_to_remove <- setdiff(ensembl_ids, right_ensembl_id) # all ensembl_ids except the right one
+    ensembls_to_remove_list <- append(ensembls_to_remove_list, ensembls_to_remove)
+  }
+  
+  biomart_name_conversion <- biomart_name_conversion[!biomart_name_conversion$ensembl_gene_id %in% ensembls_to_remove_list, ] # removing the unwanted duplicates
+
+  
+  # put in order as entrez_node_ids (order in graph)
+  row.names(biomart_name_conversion) <- as.character(biomart_name_conversion$entrezgene_id)
+  node_ids_converted <- biomart_name_conversion[entrez_node_ids, ]
+  node_ids_converted$entrezgene_id <- entrez_node_ids
+  
+  # if NA (ie, couldn't map to an ensembl id), set to entrez id
+  node_ids_converted[is.na(node_ids_converted$ensembl_gene_id), 'ensembl_gene_id'] <- node_ids_converted$entrezgene_id[is.na(node_ids_converted$ensembl_gene_id)]
+  node_ids_converted[is.na(node_ids_converted$external_gene_name), 'external_gene_name'] <- node_ids_converted$entrezgene_id[is.na(node_ids_converted$external_gene_name)]
+  
+  
+  mean(as.character(node_ids_converted$entrezgene_id) == entrez_node_ids) # check now right order
+  
+  # for duplicated ensembl ids, for now, just prefix the duplicated with a number...
+  node_ids_converted$ensembl_gene_id[duplicated(node_ids_converted$ensembl_gene_id)] <- paste0(node_ids_converted$ensembl_gene_id[duplicated(node_ids_converted$ensembl_gene_id)], '_2')
+  
+  # now translate graph's node ids to ensembl
+  mapkG_ensembl <- translateKEGGgraph(mapkG, node_ids_converted$ensembl_gene_id)
+  
+  return(list(mapkG_ensembl, node_ids_converted))
+    
+}
+
+
+results <- kegg_ids_to_ensembl(mapkG)
+mapkG_ensembl <- results[[1]]
+node_ids_converted <- results[[2]]
+
+
+```
+
+
+# Saving out pathway as sif file
+```{r}
+
+
+save_pathway <- function(mapkG_ensembl, node_ids_converted, pId) {
+  sif_file_sources <- c()
+  sif_file_targets <- c()
+  for (s in names(edges(mapkG_ensembl))) {
+    ts <- edges(mapkG_ensembl)[[s]]
+    
+    for (t in ts) {
+      sif_file_sources <- append(sif_file_sources, s)
+      sif_file_targets <- append(sif_file_targets, t)
+    }
+  }
+  
+  sif_file <- data.frame(source = sif_file_sources, target = sif_file_targets)
+  
+  # save sif file and node id conversion table
+  # technically it is not a sif file as we don't specify the interaction type
+  write.csv(sif_file, paste0(pId, '_pathway.csv'))
+  write.csv(node_ids_converted, paste0(pId, '_node_id_conversion.csv'))
+  
+}
+
+save_pathway(mapkG_ensembl, node_ids_converted, pId)
+
+
+
+```
+
+
+# Now loop through all wanted pathways and save
+```{r}
+pws_to_get <- c('hsa04144', 'hsa04310', 'hsa04350', 'hsa04360', 'hsa04390', 'hsa04550', 'hsa05200', 'hsa05224')
+# 'hsa01100' doesn't return any edges in the graph...
+
+for (pId in pws_to_get) {
+  print(pId)
+  mapkG <- get_pathway(pId)
+
+  results <- kegg_ids_to_ensembl(mapkG)
+  mapkG_ensembl <- results[[1]]
+  node_ids_converted <- results[[2]]
+  
+  save_pathway(mapkG_ensembl, node_ids_converted, pId)
+}
+
+
+```
+
+
+

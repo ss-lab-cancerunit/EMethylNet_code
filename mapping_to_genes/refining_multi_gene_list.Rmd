@@ -1,0 +1,174 @@
+---
+title: "Refine gene lists"
+output: html_notebook
+---
+
+Shamith has manually gone through the multiclass gene list, to filter out genes that are not affected by their probe. Many probes mapping to multiple genes could not be assigned to one gene because it is not clear which one they affect (or they affect both), but some could be assigned to one gene when looked at by a human.
+
+Read in the excel file containing the human annotations
+```{r}
+library(tidyxl)
+
+annotation <- xlsx_cells('multi_probes_mapping_to_multiple_genes (1).xlsx', )
+
+formats <- xlsx_formats('multi_probes_mapping_to_multiple_genes (1).xlsx') # contains colour annotation
+
+annotation
+
+colours <- data.frame(colours= formats$local$fill$patternFill$fgColor$rgb, id = 1:6, label = c('white', 'cream', 'green', 'yellow', 'green', 'cream'), meaning = c('not annotated', 'tag', 'replacement', 'remove', 'replacement', 'tag'))
+
+colours
+
+annotation[annotation$local_format_id == 4, ] # these should have a yellow background, and it looks like they do from the spreadsheet - these need to be removed
+
+annotation[annotation$local_format_id == 3 | annotation$local_format_id == 5, ] # these have a green background and need to replace the current annotation
+# also need to check these are the offical external_gene_names
+
+# replacing 3 gene synonyms and types
+annotation[!is.na(annotation$character) & annotation$character == 'ORAOV1', ]$character <- 'LTO1'
+annotation[!is.na(annotation$character) & annotation$character == 'FLOR1', ]$character <- 'FOLR1'
+annotation[!is.na(annotation$character) & annotation$character == 'FAM196A', ]$character <- 'INSYN2A'
+annotation[!is.na(annotation$character) & annotation$character == 'PIH1D3', ]$character <- 'DNAAF6'
+annotation[!is.na(annotation$character) & annotation$character == 'TMPRSS4-AS1', ]$character <- 'SMIM35'
+annotation[!is.na(annotation$character) & annotation$character == 'ST3GAL4-AS1', ]$character <- 'GSEC'
+annotation[!is.na(annotation$character) & annotation$character == 'ARHGAP27P1', ]$character <- 'ARHGAP27P1-BPTFP1-KPNA2P3' # pretty sure this is a correct synonym
+annotation[!is.na(annotation$character) & annotation$character == 'C4orf22', ]$character <- 'CFAP299' # pretty sure this is a correct synonym
+
+
+
+
+
+```
+Read in current multi mapping, so we can change it
+```{r}
+current_mapping <- read.table('specific_mappings/mapping_.csv', header = TRUE, sep = ',')
+current_mapping
+
+
+current_mapping[current_mapping$probe == 'cg04865110', ]
+```
+
+
+Functions to help us re-annotate the mapping
+```{r}
+get_probe <- function(r) { # return the probe on the given row
+  probe <- annotation %>%
+    filter(row == r) %>%
+    filter(col == 4) %>% # probes in column 4 (D)
+    dplyr::select(character) 
+  return(probe$character)
+}
+
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+all_ensembl_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
+                                   mart = ensembl
+                                   )
+is_ensembl_gene_name <- function(gene_name) {
+  return(gene_name %in% all_ensembl_genes$external_gene_name)
+}
+
+get_ensembl_id <- function(gene_name) {
+  return(all_ensembl_genes[all_ensembl_genes$external_gene_name == gene_name, ]$ensembl_gene_id)
+  # ensembl_id <- getBM(attributes = c("external_gene_name", 'ensembl_gene_id'),
+  #                            filters = 'external_gene_name', 
+  #                            values = c(gene_name),
+  #                            mart = ensembl
+  #                                  )
+  # return(ensembl_id$ensembl_gene_id)
+
+}
+
+make_new_row <- function(gene, r, annotation) {
+       
+       seqname <- annotation[(annotation$row == r) & (annotation$col == 1), ]$character
+       start <- annotation[(annotation$row == r) & (annotation$col == 2), ]$numeric + 1 # removing BED file 0-based start by adding 1
+       end <- annotation[(annotation$row == r) & (annotation$col == 3), ]$numeric
+       ensembl_gene_id <- get_ensembl_id(gene)
+       
+       new_row <- data.frame(seqnames = seqname, start = start, end = end, width = 2, strand = '*', probe = probe, gene_feature.ranges.start = NA, gene_feature.ranges.end = NA, gene_feature.ranges.width = NA, gene_feature.strand = NA, ensembl_gene_id = ensembl_gene_id, gene_name = gene, start_position = NA, end_position = NA, feature_type = NA, to_remove = FALSE)
+       # for now don't get all details from ensembl, just get some
+       # the bottleneck here is get_ensembl_id as it takes a bit of time
+       return(new_row)
+}
+```
+
+
+Re annotating the mapping
+```{r}
+# First, remove all yellow coloured cells from the mapping
+annotation[annotation$local_format_id == 4, ]
+current_mapping$to_remove = FALSE
+
+for (yellow_r_num in 1:nrow(annotation[annotation$local_format_id == 4, ])) {
+  yellow_r <- annotation[annotation$local_format_id == 4, ][yellow_r_num, ]
+  r <- yellow_r$row
+  probe <- get_probe(r)
+  print(probe)
+  current_mapping[(current_mapping$probe == probe) & (current_mapping$gene_name == yellow_r$character), 'to_remove'] <- TRUE
+}
+
+# Now, find all the green cells and replace the probe mappings with the green cells
+green_cells <- annotation[annotation$local_format_id == 3 | annotation$local_format_id == 5, ] 
+unique_rows <- unique(green_cells$row)
+for (r in unique_rows) { # loop through the unique rows in the green cells
+  probe <- get_probe(r) # find the probe
+  current_mapping[current_mapping$probe == probe, ]$to_remove <- TRUE # set all current_mapping with that probe to remove
+  rows_to_add <- green_cells[green_cells$row == r, ]
+  for (i in 1:nrow(rows_to_add)) {#   for each green cell gene in that row,
+   gene <- rows_to_add[[i, 'character']] 
+   
+   if (is_ensembl_gene_name(gene)) { # check it is an ensembl gene name
+     # if it is, add a current mapping row
+     new_row <- make_new_row(gene, r, annotation)
+     current_mapping <- rbind(current_mapping, new_row)
+   } else { # if it is not, add it and mark as unmapped
+     print('here!! cant map!!!')
+     print(r)
+     print(gene)
+     # In ensembl, CCND2-AS2 is a synonym of CCND2-AS1 which we have
+     
+   }
+  }
+
+
+}
+```
+
+Now remove all to_removes and check the new mapping is correct
+```{r}
+new_mapping <- current_mapping[current_mapping$to_remove == FALSE, ]
+
+new_mapping <- unique(new_mapping) # removing possible duplicate rows
+
+# given a probe, returns all genes it maps to. You can spot check various probes against the spreadsheet to determine whether it is correct or not
+check_new_mapping <- function(probe) {
+  return(as.character(new_mapping[new_mapping$probe == probe, 'gene_name']))
+}
+
+check_new_mapping('cg06105778') # I have checked a lot, mainly focussing on the changed probes and it all looks correct
+
+
+```
+
+
+
+Now save mapping and resulting new gene list
+```{r}
+write.table(new_mapping, paste0('specific_mappings/mapping_human_refined_.csv'), sep = ',')
+
+genes <- as.data.frame(new_mapping)[, c('ensembl_gene_id', 'gene_name')]
+genes <- unique(genes)
+genes
+
+write.table(genes, paste('gene_lists/genes__1500.csv', sep = ''), sep = ',', row.names = FALSE) # overwrite old gene list! (Will have old version in github)
+
+# old unique gene list was 3339 in length
+# new unique gene list is 3186 in length - so have trimmed around 150 genes off!
+```
+
+
+
+
+
+

@@ -1,0 +1,69 @@
+---
+title: "CLC_comparison_results"
+output: html_notebook
+---
+
+Plotting the results into a nice bar chart
+```{r}
+p_val_df <- read.table('p_val_results.csv', header = TRUE)
+p_val_df
+
+p_val_df$test <- as.character(p_val_df$test)
+
+
+mapping <- c('Within 1000 bp of cancer SNPs' = 'Within 1kb of cancer SNPs', 
+             'Within 1000 bp of non cancer SNPs' = 'Within 1kb of non cancer SNPs',
+             'Within 10000 bp of cancer SNPs' = 'Within 10kb of cancer SNPs',
+             'Within 10000 bp of non cancer SNPs' = 'Within 10kb of non cancer SNPs',
+             'Within 1e+05 bp of cancer SNPs' = 'Within 100kb of cancer SNPs',
+             'Within 1e+05 bp of non cancer SNPs' = 'Within 100kb of non cancer SNPs',
+             'Within 1000 bp of CGCs' = 'Within 1kb of Cancer Gene Census genes',
+             'Epigenetically-silenced in tumours' = 'Epigenetically-silenced in tumours',
+             'Differentially expressed in tumours' = 'Differentially expressed in tumours',
+             'Gene length' = 'Gene length',
+             'Transcript length' = 'Transcript length',
+             'Genes are more conserved' = 'Genes are more conserved',
+             'BRCA expression' = 'Breast cancer expression',
+             'HNSC expression' = 'Head and neck cancer expression',
+             'THCA expression' = 'Thyroid cancer expression',
+             'BRCA normal expression' = 'Normal breast expression'
+             )
+
+p_val_df$test <- unname(mapping[p_val_df$test]) # renaming
+
+```
+
+```{r fig.width=5, fig.height=3}
+library(ggplot2)
+
+ggplot(p_val_df) + 
+  geom_col(aes(y = -log10(p_val), x = reorder(test, p_val))) + 
+  geom_hline(aes(yintercept = -log10(0.05)), linetype="dashed", color = 'red', size = 0.5) +# 0.05 significance level
+  ylab(expression('-log'[10]*'(p-value)')) + 
+  xlab("Test") +
+  coord_flip() +
+  theme_classic() + 
+  theme(text = element_text(size=18), axis.text.y=element_text(colour="black")) +
+  ggsave('CLC_comparison_results.svg', width = 6, height = 3.75)
+
+
+```
+
+Now do corrected version, in case people want that:
+```{r, fig.width=5, fig.height=3}
+p_val_df$adjusted <- p.adjust(p_val_df$p_val, method = 'bonferroni')
+
+ggplot(p_val_df) + 
+  geom_col(aes(y = -log10(adjusted), x = reorder(test, adjusted))) + 
+  geom_hline(aes(yintercept = -log10(0.05)), linetype="dashed", color = 'red', size = 0.5) +# 0.05 significance level
+  ylab(expression('Adjusted -log'[10]*'(p-value)')) + 
+  xlab("Test") +
+  coord_flip() +
+  theme_classic() + 
+  theme(text = element_text(size=12), axis.text.y=element_text(colour="black")) +
+  ggsave('CLC_comparison_results_adjusted_p.svg', width = 5, height = 3)
+
+
+
+```
+

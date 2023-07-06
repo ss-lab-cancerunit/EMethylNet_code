@@ -1,0 +1,284 @@
+---
+title: "gProfiler"
+output: html_notebook
+---
+
+Given gene id lists, runs gProfiler gene functional enrichment tool to find enriched ontology terms.
+
+Data sources that it uses: KEGG (19), Reactome
+(20) and WikiPathways (21); miRNA targets from miRTar-
+Base (22) and regulatory motif matches from TRANSFAC
+(23); tissue specificity based on expression data from Hu-
+man Protein Atlas (24); protein complexes data from CO-
+RUM (25) and human disease phenotype associations from
+Human Phenotype Ontology
+
+Uses cumulative hypergeometric test with their Set Counts and Sizes correction method  - 
+"Unlike the standard meth-
+ods, g:SCS considers the dependency of multiple tests by
+taking into account the overlap of functional terms. We
+repeated the simulations for verifying the g:SCS method
+and confirmed that the method still holds the same prop-
+erties. Namely, g:SCS is more conservative than Benjamini-
+Hochberg False Discovery Rate but not as strict as Bonfer-
+roni correction."
+
+We use a custom background set - all of the probes we use as input features, mapped to genes (using the same mapping file (strict or relaxed) as used to get the gene list)
+
+## Read in gene and background list
+```{r eval=FALSE, echo = FALSE}
+library(gprofiler2)
+# test domain size with annotated and known
+# data sources by default are..?
+
+type <- '' # cancer_type
+
+read_in_gene_list <- function(type) {
+  geneList <-read.table(paste('../../mapping_to_genes/gene_lists/genes_', type, '_1500.csv', sep = ''), header = TRUE, sep = ',')
+  bgList <- read.table(paste('../../mapping_to_genes/background_genes/', type, '_background_genes.csv', sep = ''), header = TRUE)
+  
+  return(c('geneList' = geneList, 'bgList' = bgList))
+}
+
+lists <- read_in_gene_list(type)
+
+
+```
+
+## Visualise top pval terms using a simple bubble plot:
+(TODO: look at the precision and recall?)
+```{r eval=FALSE, echo = FALSE}
+library(ggplot2)
+library(tidyverse)
+n <- 30
+
+# plots bubble plots for all GO categories (source) and saves them
+plot_and_save <- function(result, n) {
+  
+  library(dplyr)
+  to_plot <- result$result %>%
+    as_tibble() %>%
+    arrange(p_value) %>%
+    dplyr::select(source, term_id, term_name, p_value, intersection, intersection_size, recall)
+  
+  sources <- c("GO:BP", "GO:CC", "GO:MF", "TF", "HPA", "HP", "other")
+  # sources <- c("TF")
+  
+  for (s in sources) {
+    
+    if (s == "other") { # for other, colour is different
+      this_source <- filter(to_plot, !(source %in% sources))
+      if (nrow(this_source) > 0) {
+        ggplot(this_source[1:n, ]) +
+          geom_point(aes(x = p_value, y = reorder(term_name, -p_value), size = intersection_size, colour = source)) + 
+          ylab('Term names') + 
+          ggtitle(s)
+      }
+    }
+    else {
+      this_source <- filter(to_plot, source == s)
+      if (nrow(this_source) > 0) {
+        ggplot(this_source[1:n, ]) +
+          geom_point(aes(x = p_value, y = reorder(term_name, -p_value), size = intersection_size, colour = recall)) + 
+          ylab('Term names') + 
+          ggtitle(s)
+      }
+    }
+    
+    
+    if (nrow(this_source) > 0) {
+      ggsave(paste('go_bubble_plots/', type, '_bubble_gene_ontology_', str_replace(s, ':', '_'), '.pdf', sep = ''), width = 12)    
+    }
+    
+  }
+  
+}
+
+
+
+```
+
+
+## Do for every cancer type:
+```{r eval=FALSE, echo = FALSE}
+cancer_types <- c('', 'BLCA', 'BRCA' , 'COAD', 'ESCA', 'HNSC', 'KIRC', 'KIRP', 'LIHC', 'LUAD', 'LUSC', 'PRAD', 'THCA', 'UCEC')
+n <- 30 # max number of gene ontology terms to show in plot
+library(gprofiler2)
+
+for (type in cancer_types) {
+  
+  lists <- read_in_gene_list(type) # gets gene list and background set
+
+  result <- gost(unique(lists$geneList.ensembl_gene_id), evcodes = T, domain_scope = "custom", custom_bg = as.vector(unique(lists$bgList.ensembl_gene_id)), correction_method = "bonferroni") # we use the bonferroni correction as it is the strictest
+  
+  # save result for revigo:
+  df <- result$result
+  df <- df[, names(df) != 'parents'] # drop the list column (that I don't think we need)
+  write.table(df, file = paste('gProfiler_', type, '.csv', sep = ''), quote = TRUE, row.names = FALSE, sep = ' ')
+  
+  plot_and_save(result, n)
+  
+}
+
+```
+
+
+# Read in multiclass result and look at pathways
+```{r} 
+# fig.height=8, fig.width = 10}
+library(data.table)
+result_bonferroni <- read.table('gProfiler_.csv', sep = ' ', header = TRUE) 
+View(result_bonferroni)
+
+
+# saving results for revigo
+write.table(result_bonferroni[, c('term_id', 'p_value')], 'gProfiler_revigo.csv', sep = ' ', quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+table(result_bonferroni$source)
+
+# For pathways, we are interested in sources: KEGG, WP, and REAC
+
+to_plot <- result_bonferroni[result_bonferroni$source %in% c('KEGG', 'WP', 'REAC'), ]
+
+library(dplyr)
+library(tibble)
+library(ggplot2)
+to_plot %>%
+  mutate(minus_log_pval = -log10(p_value)) %>%
+  arrange(p_value) %>%
+  .[1:30, ] %>%
+  # dplyr::select(source, term_id, term_name, p_value, minus_log_pval, intersection, intersection_size, recall)
+  ggplot(aes(x = reorder(term_name, p_value), y = minus_log_pval)) +
+    geom_col(aes(fill = source)) + 
+    xlab('') +
+    ylab('-log(p-value)') + 
+    # labs(fill = "Term source") +
+    scale_fill_discrete(name = "Term source", labels = c("KEGG", "Reactome", "WikiPathways")) +
+    ggtitle('Top 30 pathway terms enriched in the multiclass gene list') + 
+    theme(plot.title = element_text(hjust = 0.75)) + 
+    coord_flip()
+
+ggsave('Pathways_enriched_in_multiclass_gene_list.pdf', height = 4, width = 6)
+
+# the most frequently occuring words:
+library(stringr)
+table(strsplit(str_to_lower(paste(to_plot$term_name, sep = ' ', collapse = ' ')), split = ' ')) %>%
+  as.data.frame() %>%
+  as.tibble() %>%
+  filter(Freq > 2) %>%
+  arrange(desc(Freq))
+
+# Table to put in supplementary?
+to_plot[, c('source', 'term_name', 'p_value')] %>%
+  arrange(p_value)
+
+to_plot
+```
+Looking at the pathways reveals:
+
+- Pathways in cancer
+- Wnt pathway (lots of terms supporting this from all sources)
+- Developmental biology
+- Metabolism
+- Hippo signaling pathway
+- Lots of signalling
+- Transcription stuff
+
+# Looking into some if these pathways more deeply:
+Which parts of the Wnt pathway are present? and the hippo pathway?
+```{r}
+library(stringr)
+wnt_pathway_terms <- to_plot[str_detect(to_plot$term_name, 'Wnt') | str_detect(to_plot$term_name, 'WNT'), ]
+wnt_pathway_terms
+
+wnt_pathway_terms$intersection
+wnt_genes <- wnt_pathway_terms[1, ]$intersection
+
+# getting the KEGG identifiers for these genes:
+library(KEGGREST)
+head(keggFind("genes", c("shiga", "toxin")))
+
+
+# can I visualise which parts of the Wnt pathway we have here? Eg. in a network?
+```
+Are there developmental biology pathways?
+What about metabolism pathways?
+
+
+
+
+# Which parts of our gene lists do these significant terms cover? Plotting a heatmap.
+```{r}
+# make sure you read in geneList and result_bonferroni (see code above)
+type = ''
+
+geneList <-read.table(paste('../../mapping_to_genes/gene_lists/genes_', type, '_1500.csv', sep = ''), header = TRUE, sep = ',')
+
+inter <- result_bonferroni$intersection
+
+library(stringr)
+genes <- unique(str_split(as.character(inter), ','))
+genes <- unique(unlist(genes))
+
+print(paste("Fraction of multiclass genes that are found in a significant GO term: ", length(genes)/length(unique(geneList$ensembl_gene_id))))
+
+# focus on biological process:
+bps <- result_bonferroni[result_bonferroni$source == 'GO:BP', ]
+
+library(tidyverse)
+
+bps <- bps[order(bps$intersection_size, decreasing = TRUE), ]
+
+bps$intersection <- str_split(as.character(bps$intersection), ',')
+
+gene <- "ENSG00000055957" 
+
+
+which_terms <- function(gene) {
+  res <- unlist(lapply(bps$intersection, function(i) return(gene %in% i)))
+  return(res)
+}
+
+
+go_and_genes <- data.frame(row.names = bps$term_name)
+
+for (gene in unique(geneList$ensembl_gene_id)) {
+  terms <- which_terms(gene)
+  go_and_genes[gene] <- terms
+}
+
+mean(as.matrix(go_and_genes)*1) # only a small fraction are 1
+go_and_genes_filtered <- go_and_genes[, colSums(go_and_genes) != 0]
+
+# can we visualise this as a heatmap?
+library(pheatmap)
+
+phm <- pheatmap(as.matrix(go_and_genes_filtered)*1, show_rownames = F, show_colnames = F, filename = 'test_clustered.pdf') # *1 to turn TRUE FALSE into 1 0 # rows are GO terms and cols are genes
+
+# phm$tree_row$labels[phm$tree_row$order]
+# phm$tree_col$labels[phm$tree_col$order][1:5]
+
+clustered <- go_and_genes_filtered[phm$tree_row$labels[phm$tree_row$order], phm$tree_col$labels[phm$tree_col$order]] # I have verified this is correct - it results in the same heatmap when plotting (set cluster rows and cols = False)
+
+# pheatmap(as.matrix(test)*1, show_rownames = F, show_colnames = F, cluster_rows = F, cluster_cols = F, filename = 'test.pdf')
+
+```
+
+
+```{r}
+library("heatmaply")
+
+test <- clustered*1
+
+heatmaply(test, showticklabels = FALSE, fontsize_row = 1, fontsize_col = 1, Rowv = FALSE, Colv = FALSE, dendrogram = 'none')
+```
+
+
+
+
+
+
+
+
+
+

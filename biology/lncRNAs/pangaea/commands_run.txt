@@ -1,0 +1,13 @@
+# Commands I ran to get all_lncRNA_output.json:
+
+Download the 4 million cancer abstracts:
+We did this in biology/pangea/ so we can use the xml file there.
+
+The number of PubMed cancer articles (4227582) used in the command was correct on November 2020.
+
+Then take the abstracts that mention at least one of the lncRNAs in the multiclass genes and a keyword (lncRNA_cancer_stems)
+
+papers-parser local --genes ../multiclass_lncRNAs.txt --relations lncRNA_cancer_stems.txt --synonyms 'default' --model rules --output lncRNA_output ../../pangea/livius_output/cancer_output.xml
+
+
+

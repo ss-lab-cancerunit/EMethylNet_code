@@ -1,0 +1,200 @@
+---
+title: "Analyse survival results"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+```{r include=FALSE}
+library(tidyverse)
+```
+
+
+
+Here we look at the results from SurvivalAnalysis to see if the gene lists are predictive of survival.
+
+Results of this analysis: Unless we are doing it wrong, there doesn't seem to be much survival signal in the gene expression values of our gene lists when evaluating testsets. However, some cancer types for either 1 year or 5 year survival can predict reasonably well.
+
+At the bottom we make plots for the methylation based survival.
+
+NOTE: PRAD or THCA didn't converge!
+
+Read in the saved csvs:
+```{r}
+concordance <- read.table('concordance_stats.csv')
+aucs <- read.table('aucs.csv')
+model_comparisons <- read.table('model_comparisons.csv')
+num_sig_genes <- read.table('num_sig_genes.csv')
+```
+
+## Comparing models: is the genes + covariates model significantly different from the covariates model?
+
+For each cancer type there is two coxph models: one just using covariates as input (age, gender, race, stage) and the other using both covariates and genes. These genes are from our gene lists and were also found to be significant in a univariate coxph analysis.
+
+My question is: Is the model using both genes and covariates significantly different to the model only using covariates?
+
+```{r}
+print(paste("The cancer types where the difference between the two models is not significant are: ", paste(as.character(rownames(model_comparisons)[model_comparisons$pval > 0.05]), collapse = ', ')))
+``` 
+
+```{r fig1, fig.height = 5, fig.width = 10}
+
+model_comparisons_tidy <- model_comparisons %>%
+  mutate(cancer_type = str_sub(rownames(model_comparisons), 0, 4)) %>%
+  filter(pval < 0.05) %>%# not showing the non significant cancer types
+  group_by(cancer_type) %>%
+  summarise(mean_pval = mean(pval), std_pval = sd(pval), mean_df = mean(df))
+
+# note: df (degrees of freedom) is equal to the number of genes used in the genes and covariates model
+library(ggplot2)
+
+ggplot(model_comparisons_tidy) +
+  geom_col(aes(x = reorder(cancer_type, log(mean_pval)), y = mean_pval, fill = std_pval)) + 
+  geom_text(aes(x = cancer_type, y = 0.014, label = round(mean_df, 2))) + 
+  geom_label(aes(x = 12.5, y = 0.014, label = 'number of genes'), size = 3, fontface = "plain", family = 'mono') +
+  xlab('Cancer type') + 
+  ylab('Mean P-value of the difference in models') + 
+  ggtitle('Comparing models for all cancer types', 'Is the genes + covariates model significantly different from just the covariates model?') + 
+  coord_flip()
+
+
+# is there a correlation between mean pval and mean number of genes? (num genes = df (degrees of freedom))
+ggplot(model_comparisons_tidy) +
+  geom_point(aes(x = mean_pval, y = mean_df))
+cor(x = model_comparisons_tidy$mean_pval, y = model_comparisons_tidy$mean_df) # sort of
+```
+
+```{r fig2, fig.height = 5, fig.width = 10}
+# so we can see all of the values on one scale, here is the log pvalues:
+# lower still means more significant
+ggplot(model_comparisons_tidy) +
+  geom_col(aes(x = reorder(cancer_type, log(mean_pval)), y = log(mean_pval), fill = std_pval)) + 
+  geom_text(aes(x = cancer_type, y = -25, label = round(mean_df, 2))) + 
+  geom_label(aes(x = 12.5, y = -24, label = 'number of genes'), size = 3, fontface = "plain", family = 'mono') + 
+  xlab('Cancer type') + 
+  ylab('Log(p-value) of the difference in models') + 
+  ggtitle('Comparing models for all cancer types', 'Is the genes + covariates model significantly different from just the covariates model?') + 
+  coord_flip()
+
+
+```
+
+
+## Plotting the concordance for train and test set:
+```{r fig3, fig.height = 5, fig.width = 10}
+
+concordance_tidy <- concordance %>%
+  mutate(cancer_type = str_sub(rownames(concordance), 0, 4)) %>%
+  mutate(data = factor(str_sub(str_replace_all(rownames(concordance), "[:digit:]", ""), 6), levels = c('Genes and covars train', 'Genes and covars test', 'Genes train', 'Genes test', 'Covars train', 'Covars test'))) %>%
+  mutate(data_and_cancer = paste(data, cancer_type)) %>%
+  group_by(data_and_cancer) %>%
+  summarise(mean_concordance = mean(Concordance), std_concordance = sd(Concordance), mean_se = mean(se), cancer_type = unique(cancer_type), data = unique(data))
+
+library(ggplot2)
+ggplot(concordance_tidy) + 
+  geom_col(aes(x = data, y = mean_concordance, fill = data)) + 
+  geom_errorbar(aes(x=data, ymin = mean_concordance - std_concordance, ymax = mean_concordance + std_concordance)) +
+  facet_grid(cols = vars(cancer_type)) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+  geom_hline(yintercept=0.5, linetype="dashed")
+
+# the error bars are one standard deviation above and below the value.
+
+# only looking at test data:
+concordance_tidy %>%
+  filter(str_detect(concordance_tidy$data, 'test')) %>%
+  ggplot() + 
+    geom_col(aes(x = data, y = mean_concordance, fill = data)) + 
+    geom_errorbar(aes(x=data, ymin = mean_concordance - std_concordance, ymax = mean_concordance + std_concordance)) +
+    facet_grid(cols = vars(cancer_type)) + 
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+    scale_y_continuous(breaks = seq(0,1,0.1)) + 
+    geom_hline(yintercept=0.5, linetype="dashed") + 
+    ggsave('testset_concordance.pdf', width = 12)
+
+
+
+# box plot of test concordance
+concordance %>%
+  mutate(cancer_type = str_sub(rownames(concordance), 0, 4)) %>%
+  mutate(data = factor(str_sub(str_replace_all(rownames(concordance), "[:digit:]", ""), 6), levels = c('Genes and covars train', 'Genes and covars test', 'Genes train', 'Genes test', 'Covars train', 'Covars test'))) %>%
+  mutate(data_and_cancer = paste(data, cancer_type)) %>%
+  filter(str_detect(data, 'test')) %>%
+  ggplot() + 
+    geom_boxplot(aes(x = data, y = Concordance, fill = data)) +
+    facet_grid(cols = vars(cancer_type)) +
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+    scale_y_continuous(breaks = seq(0,1,0.1)) + 
+    geom_hline(yintercept=0.5, linetype="dashed") + 
+    ggsave('testset_concordance_boxplot.pdf', width = 12)
+```
+
+Cancer types where adding genes resulted in an improved test concordance:
+```{r}
+# cancer types where adding genes resulted in an improved test concordance:
+cancer_types <- unique(concordance_tidy$cancer_type)
+
+cts <- paste(cancer_types[concordance_tidy[concordance_tidy$data == 'Genes and covars test', 'mean_concordance'] > concordance_tidy[concordance_tidy$data == 'Covars test', 'mean_concordance']], sep = ' ', collapse = ' ')
+
+print(paste("Cancer types where the genes and covars model resulted in a better testset concordance than the covars model:", cts))
+
+```
+
+
+## Plotting the aucs:
+
+Is there a visual difference between test aucs?
+```{r fig.height = 5, fig.width = 10}
+tidy_aucs <- aucs %>%
+  mutate(data = factor(str_sub(str_replace_all(rownames(aucs), "[:digit:]", ""), 6))) %>%
+  mutate(cancer_type = str_sub(rownames(aucs), 0, 4)) %>%
+  mutate(data_and_cancer = paste(data, cancer_type))
+
+
+ggplot(tidy_aucs) + 
+  geom_boxplot(aes(x = data, y = test_5year, fill = data)) +
+  facet_grid(cols = vars(cancer_type)) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+  scale_y_continuous(breaks = seq(0,1,0.1)) + 
+  geom_hline(yintercept=0.5, linetype="dashed") +
+  ggtitle("Testset AUCs for predicting 5 year survival") + 
+  ggsave('ROCs/testsetAUCs_5_year.pdf', width = 12)
+
+ggplot(tidy_aucs) + 
+  geom_boxplot(aes(x = data, y = test_1year, fill = data)) +
+  facet_grid(cols = vars(cancer_type)) +
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+  scale_y_continuous(breaks = seq(0,1,0.1)) + 
+  geom_hline(yintercept=0.5, linetype="dashed") +
+  ggtitle("Testset AUCs for predicting 1 year survival") + 
+  ggsave('ROCs/testsetAUCs_1_year.pdf', width = 12)
+
+
+```
+Making the 5 year AUC plot a violin plot and look nicer
+```{r}
+tidy_aucs %>%
+  filter(!(cancer_type %in% c('PRAD', 'THCA', 'ESCA'))) %>% # PRAD and THCA don't have enough positive egs to converge, and ESCA returns mostly null ROC AUCs
+  ggplot() +
+    geom_violin(aes(x = data, y = test_5year, fill = data)) +
+    facet_grid(cols = vars(cancer_type)) +
+    theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + 
+    scale_y_continuous(breaks = seq(0,1,0.1)) + 
+    ylab("ROC AUC") + 
+    geom_hline(yintercept=0.5, linetype="dashed") +
+    scale_fill_manual(values=c('#d95f02','#7570b3', "#1b9e77"), name = "Input variables", labels = c("Covariates", "Genes", "Genes and covariates")) + # colors are 3-class Dark2 from color brewer
+    # ggtitle("Testset AUCs for predicting 5 year survival")
+    ggsave('testsetAUCs_5_year_violin.pdf', width = 12, height = 4)
+
+
+# find which cancer types have the highest 5 year test score for just genes
+tidy_aucs %>%
+  filter(data == 'Genes_') %>%
+  group_by(cancer_type) %>%
+  summarise(mean(test_5year)) %>%
+  arrange(`mean(test_5year)`)
+# KIRC and COAD have the highest averages
+  
+```
+

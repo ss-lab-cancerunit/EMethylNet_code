@@ -1,0 +1,96 @@
+---
+title: "Get expression data"
+output: html_notebook
+---
+
+Get expression data from TCGA for a few cancer types.
+We will be comparing different groups of genes, so the normalisation method needs to account for gene length. 
+We will also be averaging over samples, so preferably also need to account for different library sizes.
+One method that does all of this is edgeR's TMM method.
+
+```{r}
+cancer_type <- 'normal BRCA' # can be 'normal BRCA' for normals
+```
+
+First, load the data
+```{r}
+if (cancer_type == 'normal BRCA') {
+  load('/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/BRCAexpression.rda')
+} else {
+  load(paste0('/Tank/methylation-patterns-code/methylation-patterns-izzy/data_preprocessing/', cancer_type, 'expression.rda'))
+}
+
+data
+
+# diagnoses <- data.frame(colData(data)[, c('definition', 'barcode')])
+# diagnoses$normal <- diagnoses$definition == 'Solid Tissue Normal'
+# View(diagnoses)
+
+df <- assay(data)
+df[1:5,1:5]
+
+# is_normal <- diagnoses[colnames(df), 'normal']
+colData(data)$is_normal <- colData(data)$definition == 'Solid Tissue Normal' # currently lumping metastatic and primary cancers together - there are only 7 metastatic - is this sensible?
+
+
+# check colData rows are the same order as data's columns
+mean(row.names(colData(data)) == colnames(data)) # should be 1
+```
+
+Normalise cancer data with edgeR's TMM method.
+Following code from: http://www.nathalievialaneix.eu/doc/html/TP1_normalization.html#edger
+```{r}
+if (cancer_type == 'normal BRCA') {
+  cancer_exp <- df[, colData(data)$is_normal] # I know variable naming isn't optimal here but I didn't want to go through and change it
+} else {
+  cancer_exp <- df[, !colData(data)$is_normal]
+}
+
+dge2 <- DGEList(cancer_exp)
+dge2
+
+dge2 <- calcNormFactors(dge2, method = "TMM")
+dge2$samples
+
+pseudo_TMM <- log2(cpm(dge2) + 1)
+
+# now we have the normalisaed counts, lets compare them to the raw counts.
+df_TMM <- melt(pseudo_TMM, id = rownames(raw_counts_wn))
+names(df_TMM)[1:2] <- c ("id", "sample")
+df_TMM$method <- rep("TMM", nrow(df_TMM))
+
+pseudo_counts <- log2(cancer_exp + 1)
+df_raw <- melt(pseudo_counts, id = rownames(raw_counts_wn))
+names(df_raw)[1:2]<- c("id", "sample")
+df_raw$method <- rep("Raw counts", nrow(df_raw))  
+
+df_allnorm <- rbind(df_raw, df_TMM)
+df_allnorm <- df_allnorm[df_allnorm$sample %in% unique(df_allnorm$sample)[1:10], ] # make it smaller
+
+ggplot(data=df_allnorm, aes(x=sample, y=value, fill=method)) + 
+  geom_boxplot()
+
+pseudo_TMM[1:5,1:5]
+
+```
+
+Now to average all samples to get single values for each gene:
+```{r}
+dim(pseudo_TMM)
+averaged <- rowMeans(pseudo_TMM)
+averaged
+
+
+ggplot(data.frame(averaged)) + 
+  geom_freqpoly(aes(averaged), bins = 100)
+
+```
+
+
+Now save as csv
+```{r}
+write.table(averaged, paste0('averaged_TMM_', cancer_type, '.csv'))
+```
+
+
+
