@@ -41,12 +41,12 @@ This is the code repo for EMethylNet. We create XGBoost models that can classify
     - 5d: `biology/pathways/visualising_enriched_kegg_pathways/visualising_enriched_kegg_pathways.ipynb`
 - Figure 6:
     - Hand curated networks in pathviso and cytoscape
-Figure 7:
+- Figure 7:
     - 7a: `biology/lncRNAs/proportions_of_lncRNAs/gene_stats.Rmd`
     - 7b+c: `biology/lncRNAs/combining_databases_and_pangea.ipynb`
     - 7d: `biology/lncRNAs/validate_with_properties/CLC_comparison_results.Rmd`
     - 7e: `biology/lncRNAs/validate_with_properties/CLC_comparison.Rmd`
-Figure 8:
+- Figure 8:
     - 8a: `survival_analysis/SurvivalAnalysisNoTestset.Rmd`
     - 8b+c: `survival_analysis/SurvivalAnalysis.Rmd`
 
