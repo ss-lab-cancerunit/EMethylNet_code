@@ -1,0 +1,1008 @@
+booster[0]:
+0:[f216005<-0.534648061] yes=1,no=2,missing=1
+	1:[f213<4.53876543] yes=3,no=4,missing=3
+		3:leaf=0.372580618
+		4:leaf=0.0944999978
+	2:[f14421<-0.844614029] yes=5,no=6,missing=5
+		5:leaf=-0.340199977
+		6:leaf=0.240545452
+booster[1]:
+0:[f216005<-0.534648061] yes=1,no=2,missing=1
+	1:[f198<4.67550945] yes=3,no=4,missing=3
+		3:leaf=0.314927042
+		4:leaf=0.0945255905
+	2:[f14421<-0.844614029] yes=5,no=6,missing=5
+		5:leaf=-0.290299833
+		6:leaf=0.213701457
+booster[2]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.280761123
+	2:[f4083<-3.29764867] yes=3,no=4,missing=3
+		3:leaf=0.198233873
+		4:leaf=-0.262194037
+booster[3]:
+0:[f216005<-0.633629739] yes=1,no=2,missing=1
+	1:leaf=0.256864309
+	2:[f14421<-0.844614029] yes=3,no=4,missing=3
+		3:leaf=-0.238508821
+		4:leaf=0.183129162
+booster[4]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.240523979
+	2:[f4083<-3.29764867] yes=3,no=4,missing=3
+		3:leaf=0.164270252
+		4:leaf=-0.220667168
+booster[5]:
+0:[f131078<0.972396731] yes=1,no=2,missing=1
+	1:[f22875<-4.39540386] yes=3,no=4,missing=3
+		3:leaf=0.0120373424
+		4:leaf=0.228284448
+	2:[f3276<-2.64939976] yes=5,no=6,missing=5
+		5:leaf=0.0908055976
+		6:leaf=-0.203311875
+booster[6]:
+0:[f216005<-0.633629739] yes=1,no=2,missing=1
+	1:leaf=0.218493327
+	2:[f14421<-0.844614029] yes=3,no=4,missing=3
+		3:leaf=-0.196440488
+		4:leaf=0.139840379
+booster[7]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.210982725
+	2:[f4083<-3.29764867] yes=3,no=4,missing=3
+		3:leaf=0.12900126
+		4:leaf=-0.186046466
+booster[8]:
+0:[f251017<1.00703359] yes=1,no=2,missing=1
+	1:[f32028<-1.78319848] yes=3,no=4,missing=3
+		3:leaf=0.116813123
+		4:leaf=-0.176823035
+	2:leaf=0.204942614
+booster[9]:
+0:[f216005<-0.633629739] yes=1,no=2,missing=1
+	1:leaf=0.199215323
+	2:[f14421<-0.844614029] yes=3,no=4,missing=3
+		3:leaf=-0.168413758
+		4:leaf=0.109371074
+booster[10]:
+0:[f119281<1.83544993] yes=1,no=2,missing=1
+	1:leaf=0.191655919
+	2:[f3001<0.55205369] yes=3,no=4,missing=3
+		3:leaf=-0.15380685
+		4:leaf=0.0315632448
+booster[11]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.190483108
+	2:[f2315<-0.698277712] yes=3,no=4,missing=3
+		3:leaf=-0.152488232
+		4:leaf=0.0596349202
+booster[12]:
+0:[f251017<1.00703359] yes=1,no=2,missing=1
+	1:[f120825<2.05784082] yes=3,no=4,missing=3
+		3:leaf=0.0399304479
+		4:leaf=-0.14411144
+	2:leaf=0.186694354
+booster[13]:
+0:[f12032<-3.36039948] yes=1,no=2,missing=1
+	1:leaf=0.179364324
+	2:[f51211<-3.35080385] yes=3,no=4,missing=3
+		3:leaf=-0.0105199758
+		4:leaf=-0.12884897
+booster[14]:
+0:[f216005<-0.633629739] yes=1,no=2,missing=1
+	1:leaf=0.178898916
+	2:[f239134<-2.55831051] yes=3,no=4,missing=3
+		3:leaf=0.0116811553
+		4:leaf=-0.12992309
+booster[15]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.175209835
+	2:[f162977<-2.66929674] yes=3,no=4,missing=3
+		3:leaf=0.000189355967
+		4:leaf=-0.122278839
+booster[16]:
+0:[f114390<0.418475538] yes=1,no=2,missing=1
+	1:leaf=0.171422422
+	2:[f154401<-3.2061553] yes=3,no=4,missing=3
+		3:leaf=-0.0112343924
+		4:leaf=-0.114346012
+booster[17]:
+0:[f251017<1.00703359] yes=1,no=2,missing=1
+	1:[f193382<1.27791619] yes=3,no=4,missing=3
+		3:leaf=-0.019514313
+		4:leaf=-0.106720269
+	2:leaf=0.167335391
+booster[18]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.162988827
+	2:[f163323<3.09171724] yes=3,no=4,missing=3
+		3:leaf=-0.100129448
+		4:leaf=-0.0234119445
+booster[19]:
+0:[f242314<-0.428719878] yes=1,no=2,missing=1
+	1:leaf=-0.0816708058
+	2:leaf=0.158682257
+booster[20]:
+0:[f216005<-0.633629739] yes=1,no=2,missing=1
+	1:leaf=0.15409331
+	2:leaf=-0.0789639503
+booster[21]:
+0:[f115732<-3.08498025] yes=1,no=2,missing=1
+	1:leaf=0.147568777
+	2:leaf=-0.0802497417
+booster[22]:
+0:[f114390<0.418475538] yes=1,no=2,missing=1
+	1:leaf=0.145009488
+	2:leaf=-0.0757389814
+booster[23]:
+0:[f276097<-3.55169821] yes=1,no=2,missing=1
+	1:leaf=0.130350903
+	2:leaf=-0.090879038
+booster[24]:
+0:[f240311<0.571984768] yes=1,no=2,missing=1
+	1:leaf=0.135096505
+	2:leaf=-0.0721395388
+booster[25]:
+0:[f110653<-1.92566061] yes=1,no=2,missing=1
+	1:leaf=0.130500019
+	2:leaf=-0.0705855712
+booster[26]:
+0:[f251017<1.00703359] yes=1,no=2,missing=1
+	1:leaf=-0.0689071119
+	2:leaf=0.125547916
+booster[27]:
+0:[f4306<0.606392503] yes=1,no=2,missing=1
+	1:leaf=0.118102655
+	2:leaf=-0.0680733174
+booster[28]:
+0:[f277273<-4.05793953] yes=1,no=2,missing=1
+	1:leaf=0.11581599
+	2:leaf=-0.0631568059
+booster[29]:
+0:[f277273<-4.07235384] yes=1,no=2,missing=1
+	1:leaf=0.109966218
+	2:leaf=-0.0564851612
+booster[30]:
+0:[f261354<-2.56787705] yes=1,no=2,missing=1
+	1:leaf=-0.0485436544
+	2:leaf=0.103655055
+booster[31]:
+0:[f70734<-1.8692174] yes=1,no=2,missing=1
+	1:leaf=-0.0419455022
+	2:leaf=0.0977985635
+booster[32]:
+0:leaf=0.036147669
+booster[33]:
+0:leaf=0.0318728685
+booster[34]:
+0:leaf=0.0280738603
+booster[35]:
+0:leaf=0.0247052237
+booster[36]:
+0:leaf=0.0217269175
+booster[37]:
+0:leaf=0.0190980956
+booster[38]:
+0:leaf=0.0167801064
+booster[39]:
+0:leaf=0.0147387274
+booster[40]:
+0:leaf=0.01294378
+booster[41]:
+0:leaf=0.0113629056
+booster[42]:
+0:leaf=0.00997528434
+booster[43]:
+0:leaf=0.0087554073
+booster[44]:
+0:leaf=0.00768411718
+booster[45]:
+0:leaf=0.0067435368
+booster[46]:
+0:leaf=0.00591784762
+booster[47]:
+0:leaf=0.00519305794
+booster[48]:
+0:leaf=0.00455611944
+booster[49]:
+0:leaf=0.00399836246
+booster[50]:
+0:leaf=0.00350714382
+booster[51]:
+0:leaf=0.00307815219
+booster[52]:
+0:leaf=0.00270046992
+booster[53]:
+0:leaf=0.00236927159
+booster[54]:
+0:leaf=0.00207867636
+booster[55]:
+0:leaf=0.00182375533
+booster[56]:
+0:leaf=0.00159944152
+booster[57]:
+0:leaf=0.00140389241
+booster[58]:
+0:leaf=0.00123161206
+booster[59]:
+0:leaf=0.00108062674
+booster[60]:
+0:leaf=0.000948756235
+booster[61]:
+0:leaf=0.000831979851
+booster[62]:
+0:leaf=0.000729589141
+booster[63]:
+0:leaf=0.000639719656
+booster[64]:
+0:leaf=0.000561285706
+booster[65]:
+0:leaf=0.000492555439
+booster[66]:
+0:leaf=0.000432165194
+booster[67]:
+0:leaf=0.000379499834
+booster[68]:
+0:leaf=0.000333115779
+booster[69]:
+0:leaf=0.000292541605
+booster[70]:
+0:leaf=0.000255832478
+booster[71]:
+0:leaf=0.000224361007
+booster[72]:
+0:leaf=0.000196966605
+booster[73]:
+0:leaf=0.000172683533
+booster[74]:
+0:leaf=0.000151755798
+booster[75]:
+0:leaf=0.000132943096
+booster[76]:
+0:leaf=0.000116996671
+booster[77]:
+0:leaf=0.00010283458
+booster[78]:
+0:leaf=9.01266103e-05
+booster[79]:
+0:leaf=7.87267854e-05
+booster[80]:
+0:leaf=6.94713017e-05
+booster[81]:
+0:leaf=6.03840235e-05
+booster[82]:
+0:leaf=5.31382102e-05
+booster[83]:
+0:leaf=4.64553632e-05
+booster[84]:
+0:leaf=4.0613606e-05
+booster[85]:
+0:leaf=3.56130622e-05
+booster[86]:
+0:leaf=3.18997882e-05
+booster[87]:
+0:leaf=2.74266295e-05
+booster[88]:
+0:leaf=2.44617477e-05
+booster[89]:
+0:leaf=2.10387152e-05
+booster[90]:
+0:leaf=1.8721752e-05
+booster[91]:
+0:leaf=1.58995335e-05
+booster[92]:
+0:leaf=1.43288044e-05
+booster[93]:
+0:leaf=1.27138665e-05
+booster[94]:
+0:leaf=1.14643826e-05
+booster[95]:
+0:leaf=9.30278111e-06
+booster[96]:
+0:leaf=8.38738197e-06
+booster[97]:
+0:leaf=7.55970723e-06
+booster[98]:
+0:leaf=6.53856341e-06
+booster[99]:
+0:leaf=5.95033134e-06
+booster[100]:
+0:leaf=5.36012612e-06
+booster[101]:
+0:leaf=4.89952481e-06
+booster[102]:
+0:leaf=4.37023209e-06
+booster[103]:
+0:leaf=2.89567038e-06
+booster[104]:
+0:leaf=2.53304779e-06
+booster[105]:
+0:leaf=2.31003673e-06
+booster[106]:
+0:leaf=2.09468612e-06
+booster[107]:
+0:leaf=1.93295682e-06
+booster[108]:
+0:leaf=1.71896625e-06
+booster[109]:
+0:leaf=1.308778e-06
+booster[110]:
+0:leaf=1.2038829e-06
+booster[111]:
+0:leaf=1.10775977e-06
+booster[112]:
+0:leaf=9.24533595e-07
+booster[113]:
+0:leaf=8.50402614e-07
+booster[114]:
+0:leaf=7.6984719e-07
+booster[115]:
+0:leaf=6.91268667e-07
+booster[116]:
+0:leaf=6.39006373e-07
+booster[117]:
+0:leaf=5.88473881e-07
+booster[118]:
+0:leaf=5.52396898e-07
+booster[119]:
+0:leaf=5.15208001e-07
+booster[120]:
+0:leaf=4.70482462e-07
+booster[121]:
+0:leaf=4.41324346e-07
+booster[122]:
+0:leaf=3.96475286e-07
+booster[123]:
+0:leaf=3.59286361e-07
+booster[124]:
+0:leaf=2.90715576e-07
+booster[125]:
+0:leaf=2.32646627e-07
+booster[126]:
+0:leaf=2.18438231e-07
+booster[127]:
+0:leaf=2.04476962e-07
+booster[128]:
+0:leaf=1.90515678e-07
+booster[129]:
+0:leaf=1.7630731e-07
+booster[130]:
+0:leaf=1.61481168e-07
+booster[131]:
+0:leaf=1.47519899e-07
+booster[132]:
+0:leaf=1.33682178e-07
+booster[133]:
+0:leaf=1.19473796e-07
+booster[134]:
+0:leaf=1.0440057e-07
+booster[135]:
+0:leaf=1.0440057e-07
+booster[136]:
+0:leaf=1.0440057e-07
+booster[137]:
+0:leaf=1.0440057e-07
+booster[138]:
+0:leaf=1.0440057e-07
+booster[139]:
+0:leaf=1.0440057e-07
+booster[140]:
+0:leaf=1.0440057e-07
+booster[141]:
+0:leaf=1.0440057e-07
+booster[142]:
+0:leaf=1.0440057e-07
+booster[143]:
+0:leaf=1.0440057e-07
+booster[144]:
+0:leaf=1.0440057e-07
+booster[145]:
+0:leaf=1.0440057e-07
+booster[146]:
+0:leaf=1.0440057e-07
+booster[147]:
+0:leaf=1.0440057e-07
+booster[148]:
+0:leaf=1.0440057e-07
+booster[149]:
+0:leaf=1.0440057e-07
+booster[150]:
+0:leaf=1.0440057e-07
+booster[151]:
+0:leaf=1.0440057e-07
+booster[152]:
+0:leaf=1.0440057e-07
+booster[153]:
+0:leaf=1.0440057e-07
+booster[154]:
+0:leaf=1.0440057e-07
+booster[155]:
+0:leaf=1.0440057e-07
+booster[156]:
+0:leaf=1.0440057e-07
+booster[157]:
+0:leaf=1.0440057e-07
+booster[158]:
+0:leaf=1.0440057e-07
+booster[159]:
+0:leaf=1.0440057e-07
+booster[160]:
+0:leaf=1.0440057e-07
+booster[161]:
+0:leaf=1.0440057e-07
+booster[162]:
+0:leaf=1.0440057e-07
+booster[163]:
+0:leaf=1.0440057e-07
+booster[164]:
+0:leaf=1.0440057e-07
+booster[165]:
+0:leaf=1.0440057e-07
+booster[166]:
+0:leaf=1.0440057e-07
+booster[167]:
+0:leaf=1.0440057e-07
+booster[168]:
+0:leaf=1.0440057e-07
+booster[169]:
+0:leaf=1.0440057e-07
+booster[170]:
+0:leaf=1.0440057e-07
+booster[171]:
+0:leaf=1.0440057e-07
+booster[172]:
+0:leaf=1.0440057e-07
+booster[173]:
+0:leaf=1.0440057e-07
+booster[174]:
+0:leaf=1.0440057e-07
+booster[175]:
+0:leaf=1.0440057e-07
+booster[176]:
+0:leaf=1.0440057e-07
+booster[177]:
+0:leaf=1.0440057e-07
+booster[178]:
+0:leaf=1.0440057e-07
+booster[179]:
+0:leaf=1.0440057e-07
+booster[180]:
+0:leaf=1.0440057e-07
+booster[181]:
+0:leaf=1.0440057e-07
+booster[182]:
+0:leaf=1.0440057e-07
+booster[183]:
+0:leaf=1.0440057e-07
+booster[184]:
+0:leaf=1.0440057e-07
+booster[185]:
+0:leaf=1.0440057e-07
+booster[186]:
+0:leaf=1.0440057e-07
+booster[187]:
+0:leaf=1.0440057e-07
+booster[188]:
+0:leaf=1.0440057e-07
+booster[189]:
+0:leaf=1.0440057e-07
+booster[190]:
+0:leaf=1.0440057e-07
+booster[191]:
+0:leaf=1.0440057e-07
+booster[192]:
+0:leaf=1.0440057e-07
+booster[193]:
+0:leaf=1.0440057e-07
+booster[194]:
+0:leaf=1.0440057e-07
+booster[195]:
+0:leaf=1.0440057e-07
+booster[196]:
+0:leaf=1.0440057e-07
+booster[197]:
+0:leaf=1.0440057e-07
+booster[198]:
+0:leaf=1.0440057e-07
+booster[199]:
+0:leaf=1.0440057e-07
+booster[200]:
+0:leaf=1.0440057e-07
+booster[201]:
+0:leaf=1.0440057e-07
+booster[202]:
+0:leaf=1.0440057e-07
+booster[203]:
+0:leaf=1.0440057e-07
+booster[204]:
+0:leaf=1.0440057e-07
+booster[205]:
+0:leaf=1.0440057e-07
+booster[206]:
+0:leaf=1.0440057e-07
+booster[207]:
+0:leaf=1.0440057e-07
+booster[208]:
+0:leaf=1.0440057e-07
+booster[209]:
+0:leaf=1.0440057e-07
+booster[210]:
+0:leaf=1.0440057e-07
+booster[211]:
+0:leaf=1.0440057e-07
+booster[212]:
+0:leaf=1.0440057e-07
+booster[213]:
+0:leaf=1.0440057e-07
+booster[214]:
+0:leaf=1.0440057e-07
+booster[215]:
+0:leaf=1.0440057e-07
+booster[216]:
+0:leaf=1.0440057e-07
+booster[217]:
+0:leaf=1.0440057e-07
+booster[218]:
+0:leaf=1.0440057e-07
+booster[219]:
+0:leaf=1.0440057e-07
+booster[220]:
+0:leaf=1.0440057e-07
+booster[221]:
+0:leaf=1.0440057e-07
+booster[222]:
+0:leaf=1.0440057e-07
+booster[223]:
+0:leaf=1.0440057e-07
+booster[224]:
+0:leaf=1.0440057e-07
+booster[225]:
+0:leaf=1.0440057e-07
+booster[226]:
+0:leaf=1.0440057e-07
+booster[227]:
+0:leaf=1.0440057e-07
+booster[228]:
+0:leaf=1.0440057e-07
+booster[229]:
+0:leaf=1.0440057e-07
+booster[230]:
+0:leaf=1.0440057e-07
+booster[231]:
+0:leaf=1.0440057e-07
+booster[232]:
+0:leaf=1.0440057e-07
+booster[233]:
+0:leaf=1.0440057e-07
+booster[234]:
+0:leaf=1.0440057e-07
+booster[235]:
+0:leaf=1.0440057e-07
+booster[236]:
+0:leaf=1.0440057e-07
+booster[237]:
+0:leaf=1.0440057e-07
+booster[238]:
+0:leaf=1.0440057e-07
+booster[239]:
+0:leaf=1.0440057e-07
+booster[240]:
+0:leaf=1.0440057e-07
+booster[241]:
+0:leaf=1.0440057e-07
+booster[242]:
+0:leaf=1.0440057e-07
+booster[243]:
+0:leaf=1.0440057e-07
+booster[244]:
+0:leaf=1.0440057e-07
+booster[245]:
+0:leaf=1.0440057e-07
+booster[246]:
+0:leaf=1.0440057e-07
+booster[247]:
+0:leaf=1.0440057e-07
+booster[248]:
+0:leaf=1.0440057e-07
+booster[249]:
+0:leaf=1.0440057e-07
+booster[250]:
+0:leaf=1.0440057e-07
+booster[251]:
+0:leaf=1.0440057e-07
+booster[252]:
+0:leaf=1.0440057e-07
+booster[253]:
+0:leaf=1.0440057e-07
+booster[254]:
+0:leaf=1.0440057e-07
+booster[255]:
+0:leaf=1.0440057e-07
+booster[256]:
+0:leaf=1.0440057e-07
+booster[257]:
+0:leaf=1.0440057e-07
+booster[258]:
+0:leaf=1.0440057e-07
+booster[259]:
+0:leaf=1.0440057e-07
+booster[260]:
+0:leaf=1.0440057e-07
+booster[261]:
+0:leaf=1.0440057e-07
+booster[262]:
+0:leaf=1.0440057e-07
+booster[263]:
+0:leaf=1.0440057e-07
+booster[264]:
+0:leaf=1.0440057e-07
+booster[265]:
+0:leaf=1.0440057e-07
+booster[266]:
+0:leaf=1.0440057e-07
+booster[267]:
+0:leaf=1.0440057e-07
+booster[268]:
+0:leaf=1.0440057e-07
+booster[269]:
+0:leaf=1.0440057e-07
+booster[270]:
+0:leaf=1.0440057e-07
+booster[271]:
+0:leaf=1.0440057e-07
+booster[272]:
+0:leaf=1.0440057e-07
+booster[273]:
+0:leaf=1.0440057e-07
+booster[274]:
+0:leaf=1.0440057e-07
+booster[275]:
+0:leaf=1.0440057e-07
+booster[276]:
+0:leaf=1.0440057e-07
+booster[277]:
+0:leaf=1.0440057e-07
+booster[278]:
+0:leaf=1.0440057e-07
+booster[279]:
+0:leaf=1.0440057e-07
+booster[280]:
+0:leaf=1.0440057e-07
+booster[281]:
+0:leaf=1.0440057e-07
+booster[282]:
+0:leaf=1.0440057e-07
+booster[283]:
+0:leaf=1.0440057e-07
+booster[284]:
+0:leaf=1.0440057e-07
+booster[285]:
+0:leaf=1.0440057e-07
+booster[286]:
+0:leaf=1.0440057e-07
+booster[287]:
+0:leaf=1.0440057e-07
+booster[288]:
+0:leaf=1.0440057e-07
+booster[289]:
+0:leaf=1.0440057e-07
+booster[290]:
+0:leaf=1.0440057e-07
+booster[291]:
+0:leaf=1.0440057e-07
+booster[292]:
+0:leaf=1.0440057e-07
+booster[293]:
+0:leaf=1.0440057e-07
+booster[294]:
+0:leaf=1.0440057e-07
+booster[295]:
+0:leaf=1.0440057e-07
+booster[296]:
+0:leaf=1.0440057e-07
+booster[297]:
+0:leaf=1.0440057e-07
+booster[298]:
+0:leaf=1.0440057e-07
+booster[299]:
+0:leaf=1.0440057e-07
+booster[300]:
+0:leaf=1.0440057e-07
+booster[301]:
+0:leaf=1.0440057e-07
+booster[302]:
+0:leaf=1.0440057e-07
+booster[303]:
+0:leaf=1.0440057e-07
+booster[304]:
+0:leaf=1.0440057e-07
+booster[305]:
+0:leaf=1.0440057e-07
+booster[306]:
+0:leaf=1.0440057e-07
+booster[307]:
+0:leaf=1.0440057e-07
+booster[308]:
+0:leaf=1.0440057e-07
+booster[309]:
+0:leaf=1.0440057e-07
+booster[310]:
+0:leaf=1.0440057e-07
+booster[311]:
+0:leaf=1.0440057e-07
+booster[312]:
+0:leaf=1.0440057e-07
+booster[313]:
+0:leaf=1.0440057e-07
+booster[314]:
+0:leaf=1.0440057e-07
+booster[315]:
+0:leaf=1.0440057e-07
+booster[316]:
+0:leaf=1.0440057e-07
+booster[317]:
+0:leaf=1.0440057e-07
+booster[318]:
+0:leaf=1.0440057e-07
+booster[319]:
+0:leaf=1.0440057e-07
+booster[320]:
+0:leaf=1.0440057e-07
+booster[321]:
+0:leaf=1.0440057e-07
+booster[322]:
+0:leaf=1.0440057e-07
+booster[323]:
+0:leaf=1.0440057e-07
+booster[324]:
+0:leaf=1.0440057e-07
+booster[325]:
+0:leaf=1.0440057e-07
+booster[326]:
+0:leaf=1.0440057e-07
+booster[327]:
+0:leaf=1.0440057e-07
+booster[328]:
+0:leaf=1.0440057e-07
+booster[329]:
+0:leaf=1.0440057e-07
+booster[330]:
+0:leaf=1.0440057e-07
+booster[331]:
+0:leaf=1.0440057e-07
+booster[332]:
+0:leaf=1.0440057e-07
+booster[333]:
+0:leaf=1.0440057e-07
+booster[334]:
+0:leaf=1.0440057e-07
+booster[335]:
+0:leaf=1.0440057e-07
+booster[336]:
+0:leaf=1.0440057e-07
+booster[337]:
+0:leaf=1.0440057e-07
+booster[338]:
+0:leaf=1.0440057e-07
+booster[339]:
+0:leaf=1.0440057e-07
+booster[340]:
+0:leaf=1.0440057e-07
+booster[341]:
+0:leaf=1.0440057e-07
+booster[342]:
+0:leaf=1.0440057e-07
+booster[343]:
+0:leaf=1.0440057e-07
+booster[344]:
+0:leaf=1.0440057e-07
+booster[345]:
+0:leaf=1.0440057e-07
+booster[346]:
+0:leaf=1.0440057e-07
+booster[347]:
+0:leaf=1.0440057e-07
+booster[348]:
+0:leaf=1.0440057e-07
+booster[349]:
+0:leaf=1.0440057e-07
+booster[350]:
+0:leaf=1.0440057e-07
+booster[351]:
+0:leaf=1.0440057e-07
+booster[352]:
+0:leaf=1.0440057e-07
+booster[353]:
+0:leaf=1.0440057e-07
+booster[354]:
+0:leaf=1.0440057e-07
+booster[355]:
+0:leaf=1.0440057e-07
+booster[356]:
+0:leaf=1.0440057e-07
+booster[357]:
+0:leaf=1.0440057e-07
+booster[358]:
+0:leaf=1.0440057e-07
+booster[359]:
+0:leaf=1.0440057e-07
+booster[360]:
+0:leaf=1.0440057e-07
+booster[361]:
+0:leaf=1.0440057e-07
+booster[362]:
+0:leaf=1.0440057e-07
+booster[363]:
+0:leaf=1.0440057e-07
+booster[364]:
+0:leaf=1.0440057e-07
+booster[365]:
+0:leaf=1.0440057e-07
+booster[366]:
+0:leaf=1.0440057e-07
+booster[367]:
+0:leaf=1.0440057e-07
+booster[368]:
+0:leaf=1.0440057e-07
+booster[369]:
+0:leaf=1.0440057e-07
+booster[370]:
+0:leaf=1.0440057e-07
+booster[371]:
+0:leaf=1.0440057e-07
+booster[372]:
+0:leaf=1.0440057e-07
+booster[373]:
+0:leaf=1.0440057e-07
+booster[374]:
+0:leaf=1.0440057e-07
+booster[375]:
+0:leaf=1.0440057e-07
+booster[376]:
+0:leaf=1.0440057e-07
+booster[377]:
+0:leaf=1.0440057e-07
+booster[378]:
+0:leaf=1.0440057e-07
+booster[379]:
+0:leaf=1.0440057e-07
+booster[380]:
+0:leaf=1.0440057e-07
+booster[381]:
+0:leaf=1.0440057e-07
+booster[382]:
+0:leaf=1.0440057e-07
+booster[383]:
+0:leaf=1.0440057e-07
+booster[384]:
+0:leaf=1.0440057e-07
+booster[385]:
+0:leaf=1.0440057e-07
+booster[386]:
+0:leaf=1.0440057e-07
+booster[387]:
+0:leaf=1.0440057e-07
+booster[388]:
+0:leaf=1.0440057e-07
+booster[389]:
+0:leaf=1.0440057e-07
+booster[390]:
+0:leaf=1.0440057e-07
+booster[391]:
+0:leaf=1.0440057e-07
+booster[392]:
+0:leaf=1.0440057e-07
+booster[393]:
+0:leaf=1.0440057e-07
+booster[394]:
+0:leaf=1.0440057e-07
+booster[395]:
+0:leaf=1.0440057e-07
+booster[396]:
+0:leaf=1.0440057e-07
+booster[397]:
+0:leaf=1.0440057e-07
+booster[398]:
+0:leaf=1.0440057e-07
+booster[399]:
+0:leaf=1.0440057e-07
+booster[400]:
+0:leaf=1.0440057e-07
+booster[401]:
+0:leaf=1.0440057e-07
+booster[402]:
+0:leaf=1.0440057e-07
+booster[403]:
+0:leaf=1.0440057e-07
+booster[404]:
+0:leaf=1.0440057e-07
+booster[405]:
+0:leaf=1.0440057e-07
+booster[406]:
+0:leaf=1.0440057e-07
+booster[407]:
+0:leaf=1.0440057e-07
+booster[408]:
+0:leaf=1.0440057e-07
+booster[409]:
+0:leaf=1.0440057e-07
+booster[410]:
+0:leaf=1.0440057e-07
+booster[411]:
+0:leaf=1.0440057e-07
+booster[412]:
+0:leaf=1.0440057e-07
+booster[413]:
+0:leaf=1.0440057e-07
+booster[414]:
+0:leaf=1.0440057e-07
+booster[415]:
+0:leaf=1.0440057e-07
+booster[416]:
+0:leaf=1.0440057e-07
+booster[417]:
+0:leaf=1.0440057e-07
+booster[418]:
+0:leaf=1.0440057e-07
+booster[419]:
+0:leaf=1.0440057e-07
+booster[420]:
+0:leaf=1.0440057e-07
+booster[421]:
+0:leaf=1.0440057e-07
+booster[422]:
+0:leaf=1.0440057e-07
+booster[423]:
+0:leaf=1.0440057e-07
+booster[424]:
+0:leaf=1.0440057e-07
+booster[425]:
+0:leaf=1.0440057e-07
+booster[426]:
+0:leaf=1.0440057e-07
+booster[427]:
+0:leaf=1.0440057e-07
+booster[428]:
+0:leaf=1.0440057e-07
+booster[429]:
+0:leaf=1.0440057e-07
+booster[430]:
+0:leaf=1.0440057e-07
+booster[431]:
+0:leaf=1.0440057e-07
+booster[432]:
+0:leaf=1.0440057e-07
+booster[433]:
+0:leaf=1.0440057e-07
+booster[434]:
+0:leaf=1.0440057e-07
+booster[435]:
+0:leaf=1.0440057e-07
+booster[436]:
+0:leaf=1.0440057e-07
+booster[437]:
+0:leaf=1.0440057e-07
+booster[438]:
+0:leaf=1.0440057e-07
+booster[439]:
+0:leaf=1.0440057e-07
+booster[440]:
+0:leaf=1.0440057e-07
+booster[441]:
+0:leaf=1.0440057e-07
+booster[442]:
+0:leaf=1.0440057e-07
+booster[443]:
+0:leaf=1.0440057e-07
+booster[444]:
+0:leaf=1.0440057e-07
+booster[445]:
+0:leaf=1.0440057e-07
+booster[446]:
+0:leaf=1.0440057e-07
+booster[447]:
+0:leaf=1.0440057e-07
+booster[448]:
+0:leaf=1.0440057e-07
+booster[449]:
+0:leaf=1.0440057e-07
