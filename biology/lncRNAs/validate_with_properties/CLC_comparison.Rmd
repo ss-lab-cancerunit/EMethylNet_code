@@ -36,10 +36,20 @@ overlap <- intersect(multi_lncRNAs_ensembl, CLCs$`GENCODE ID`)
 
 length(overlap)/nrow(CLCs) # proportion of CLCs we find
 
+# now repeat for the new version of CLC (CLC2)
+CLC2s <- read.csv('CLC2_website_30042020 - Sheet1.csv') 
+# we got this from https://www.gold-lab.org/resources which linked to this link: https://docs.google.com/spreadsheets/d/e/2PACX-1vRTS0ej7rC5__x44g3XxGErP7o9JTmMDQnI0vvfVCnk0CqVGZilZby815lSQ1JtiM7lUcu4Zrvnli2O/pub?output=csv
+overlap2 <- intersect(multi_lncRNAs_ensembl, CLC2s$GENCODE.ID)
+length(overlap2) # now we overlap with 72
+length(overlap2)/length(CLC2s$GENCODE.ID) # proportion of CLCs we find
+# 0.1463415 proportion
+
 
 ```
 
 So there are 21 overlapping CLCs. Not that many, but the proportion of CLCs in the overlap is ~17% (this is the same as the multiclass overlap proportion in the cancer gene census I think).
+
+After update: there are 72 overlapping CLC2s.
 
 
 Is this overlap significant? Let's use a Fisher's test to find out
@@ -70,7 +80,29 @@ contingency_sums$sum <- rowSums(contingency)
 contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
 contingency_sums
 
-sum(CLCs$`GENCODE ID` %in% background_lncRNAs) # should be 91
+sum(CLCs$`GENCODE ID` %in% background_lncRNAs) # should be 90
+
+# now Fisher's test:
+fisher_test <- fisher.test(contingency)
+fisher_test
+
+
+# now do for updated CLC2s
+CLC_and_multi <- sum((background_lncRNAs %in% CLC2s$GENCODE.ID) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+CLC_and_not_multi <- sum((background_lncRNAs %in% CLC2s$GENCODE.ID) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_CLC_and_multi <- sum(!(background_lncRNAs %in% CLC2s$GENCODE.ID) & (background_lncRNAs %in% multi_lncRNAs_ensembl))
+not_CLC_and_not_multi <- sum(!(background_lncRNAs %in% CLC2s$GENCODE.ID) & !(background_lncRNAs %in% multi_lncRNAs_ensembl))
+
+contingency <- data.frame(CLC = c(CLC_and_multi, CLC_and_not_multi), not_CLC = c(not_CLC_and_multi, not_CLC_and_not_multi))
+row.names(contingency) <- c('multi', 'not multi')
+View(contingency)
+
+contingency_sums <- contingency
+contingency_sums$sum <- rowSums(contingency)
+contingency_sums <- rbind(contingency_sums, colSums(contingency_sums))
+contingency_sums
+
+sum(CLC2s$GENCODE.ID %in% background_lncRNAs) # should be 370
 
 # now Fisher's test:
 fisher_test <- fisher.test(contingency)
@@ -84,7 +116,10 @@ So this overlap does appear to be significant. Means the lncRNAs we find are not
 There are still many genes not in the CLC list though. The next question is, do they share CLC properties?
 ```{r}
 sum(!multi_lncRNAs_ensembl %in% CLCs$`GENCODE ID`) # many multi lncRNAs are not CLCs
+# 573
 
+sum(!multi_lncRNAs_ensembl %in% CLC2s$GENCODE.ID) # many multi lncRNAs are not CLCs
+# 522
 ```
 
 Firstly, look at cancer-associated germline SNPs. CLC genes are significantly more likely to have their transcription start site (TSS) within 100kb of cancer-associated germline SNPs.
