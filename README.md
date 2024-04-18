@@ -1,5 +1,4 @@
-# Early detection and diagnosis of cancer using EMethylNet: an interpretable model for DNA methylation pattern detection
-
+# Early detection and diagnosis of cancer with interpretable machine learning to uncover cancer-specific DNA methylation patterns
 -------------------------------------------------
 
 This is the code repo for EMethylNet. We create XGBoost models that can classify 13 cancer types as well as non-cancer tissue samples using DNA methylome data. We utilise the features identified by the multiclass XGBoost model to develop EMethylNET (Explainable Methylome Neural network for Evaluation of Tumours), a multiclass deep neural network. We then run analyses on the features detected by the XGBoost models.
